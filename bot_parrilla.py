@@ -4,11 +4,17 @@ from telegram import Bot
 import asyncio
 from datetime import datetime
 import locale
+import os
+from dotenv import load_dotenv
+
+
+# Cargar variables de entorno desde un archivo .env
+load_dotenv()
 
 
 # === CONFIGURA ESTOS VALORES ===
-BOT_TOKEN = '8431535855:AAFYG6ljzb5gkoAHY2jHRwKs4RVCIbHRchk'
-CHAT_ID = '702417211'
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
 URL = 'https://www.futbolred.com/parrilla-de-futbol'
 
 
