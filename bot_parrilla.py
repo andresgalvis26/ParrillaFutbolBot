@@ -16,14 +16,32 @@ URL = 'https://www.futbolred.com/parrilla-de-futbol'
 def obtener_partidos():
     
     # Establecer español como idioma para la fecha
-    try:
-        locale.setlocale(locale.LC_TIME, 'es_ES.UTF-8') # Linux / Mac
-    except:
-        locale.setlocale(locale.LC_TIME, 'Spanish_Spain.1252') # Windows
+    # try:
+    #     locale.setlocale(locale.LC_TIME, 'es_ES.UTF-8') # Linux / Mac
+    # except:
+    #     locale.setlocale(locale.LC_TIME, 'Spanish_Spain.1252') # Windows
+    
+    # Traducción manual de meses al español
+    MESES_ES = {
+        'January': 'enero',
+        'February': 'febrero',
+        'March': 'marzo',
+        'April': 'abril',
+        'May': 'mayo',
+        'June': 'junio',
+        'July': 'julio',
+        'August': 'agosto',
+        'September': 'septiembre',
+        'October': 'octubre',
+        'November': 'noviembre',
+        'December': 'diciembre'
+    }
     
     hoy = datetime.now()
     dia = str(hoy.day)
-    mes = hoy.strftime('%B').lower()
+    # mes = hoy.strftime('%B').lower()
+    mes_en = hoy.strftime('%B')  # en inglés
+    mes = MESES_ES.get(mes_en, mes_en).lower()
     fecha_hoy = f"{dia} de {mes}"
     
     # Realizar scraping
