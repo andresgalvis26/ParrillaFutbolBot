@@ -16,15 +16,44 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 URL = 'https://www.futbolred.com/parrilla-de-futbol'
 
-# Configurar logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('logs/bot_parrilla.log', encoding='utf-8'),
-        logging.StreamHandler()
-    ]
-)
+
+# Configurar logging de manera más robusta
+def setup_logging():
+    """Configura el sistema de logging"""
+    # Crear directorio de logs si no existe
+    log_dir = 'logs'
+    try:
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir, exist_ok=True)
+        
+        # Configurar handlers
+        handlers = [logging.StreamHandler()]  # Siempre consola
+        
+        # Intentar agregar archivo si es posible
+        try:
+            file_handler = logging.FileHandler('logs/bot_parrilla.log', encoding='utf-8')
+            handlers.append(file_handler)
+        except Exception as e:
+            print(f"⚠️ No se pudo crear archivo de log: {e}")
+        
+        # Configurar logging
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=handlers
+        )
+        
+    except Exception as e:
+        # Si todo falla, usar solo consola
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+        print(f"⚠️ Configuración de logging simplificada: {e}")
+
+
+# Inicializar logging
+setup_logging()
 logger = logging.getLogger('ParrillaCronBot')
 
 # === CLASES Y UTILIDADES MEJORADAS ===
