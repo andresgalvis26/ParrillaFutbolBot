@@ -51,7 +51,25 @@ def obtener_partidos():
     fecha_hoy = f"{dia} de {mes}"
     
     url = 'https://www.futbolred.com/parrilla-de-futbol'
-    response = requests.get(url)
+    
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "Accept-Language": "es-CO,es;q=0.9",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Referer": "https://www.google.com/"
+    }
+    
+    try: 
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        return f"❌ ⚠️ No se pudo obtener la parrilla de fútbol en este momento. {e}"
+    
+    
     soup = BeautifulSoup(response.text, 'html.parser')
     
     mensaje = f"📺 *Partidos de hoy ({fecha_hoy}):*\n\n"
