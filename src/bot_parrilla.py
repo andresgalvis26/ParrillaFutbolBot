@@ -244,6 +244,98 @@ class FutbolRedScraper:
         fecha_manana = self.date_utils.get_manana()
         return self.obtener_partidos_fecha(fecha_manana)
 
+
+class PartidosDeHoyScrapper:
+    URL = "https://partidos-de-hoy.co"
+    
+    def obtener_partidos_hoy(self) -> List[Partido]:
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            )
+        }
+        
+        response = requests.get(self.URL, headers=headers, timeout=15)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.text, "html.parser")
+        
+        partidos = []
+        
+        league_groups = soup.select(".scf-league-group")
+        
+        # 👇 ESTE SELECTOR PUEDE AJUSTARSE
+        # cards = soup.select(".match")
+        
+        # for card in cards:
+        #     equipos = card.select_one(".teams")
+        #     hora = card.select_one(".time")
+        #     liga = card.select_one(".league")
+        #     canal = card.select_one(".channel")
+            
+        #     if not equipos or not hora:
+        #         continue
+            
+        #     partidos.append(
+        #         Partido(
+        #             equipos=equipos.get_text(strip=True),
+        #             liga=liga.get_text(strip=True) if liga else "Fútbol",
+        #             hora=hora.get_text(strip=True),
+        #             canal=canal.get_text(strip=True) if canal else "Por confirmar"
+        #     )
+        # )
+        
+        # return partidos
+        
+        for league in league_groups:
+            liga = league.find("h2")
+            liga_nombre = liga.get_text(strip=True) if liga else "Fútbol"
+
+            match_links = league.select(".scf-match-list li a.scf-match-item")
+
+            for match in match_links:
+                texto = match.get_text(" ", strip=True)
+
+                # Ejemplo texto:
+                # "No iniciado 5 Feb 2026, 20:00 Millonarios VS Deportivo Pereira"
+
+                if "VS" not in texto:
+                    continue
+
+                # Hora
+                hora = "Por confirmar"
+                for token in texto.split():
+                    if ":" in token:
+                        hora = token
+                        break
+
+                # Equipos
+                home_team_el = match.select_one(".team-row.home .team-name")
+                away_team_el = match.select_one(".team-row.away .team-name")
+
+                home_team = home_team_el.get_text(strip=True) if home_team_el else "Por confirmar"
+                away_team = away_team_el.get_text(strip=True) if away_team_el else "Por confirmar"
+
+                equipos = f"{home_team} VS {away_team}"
+
+                # Canal (imagen alt)
+                canal_img = match.select_one(".scf-match-canal img")
+                canal = canal_img["alt"] if canal_img and canal_img.has_attr("alt") else "Por confirmar"
+
+
+                partidos.append(
+                    Partido(
+                        equipos=equipos,
+                        liga=liga_nombre,
+                        hora=hora,
+                        canal=canal
+                    )
+                )
+
+        return partidos
+
 class DataFormatter:
     """Formateador de datos para mensajes del bot"""
     
@@ -303,6 +395,9 @@ class DataFormatter:
         
         return mensaje.rstrip() # Quitar salto de línea final extra
 
+
+
+
 # === FUNCIONES PRINCIPALES ===
 
 def obtener_partidos(tipo: str = "hoy") -> str:
@@ -310,13 +405,15 @@ def obtener_partidos(tipo: str = "hoy") -> str:
     Función principal para obtener partidos
     tipo: 'hoy', 'manana', 'semana'
     """
-    scraper = FutbolRedScraper()
     formatter = DataFormatter()
+
+    # scraper = FutbolRedScraper()
     
     try:
         if tipo == "hoy":
-            fecha = DateUtils.get_hoy()
+            scraper = PartidosDeHoyScrapper()
             partidos = scraper.obtener_partidos_hoy()
+            fecha = DateUtils.get_hoy()
             titulo = f"📺 *Partidos de Hoy ({fecha})*"
             return formatter.format_partidos(partidos, fecha, titulo)
             
