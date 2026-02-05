@@ -7,6 +7,7 @@ import os
 from dotenv import load_dotenv
 import logging
 from typing import List, Dict, Optional
+from config.emoji_ligas import EMOJI_LIGAS
 
 # Cargar variables de entorno desde un archivo .env
 load_dotenv('config/.env')
@@ -103,30 +104,11 @@ class Partido:
     def _get_emoji_liga(self, liga: str) -> str:
         """Obtiene emoji según la liga"""
         liga_lower = liga.lower()
-        emoji_map = {
-            'liga betplay': '🇨🇴',
-            'premier league': '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
-            'la liga': '🇪🇸',
-            'serie a': '🇮🇹',
-            'bundesliga': '🇩🇪',
-            'ligue 1': '🇫🇷',
-            'champions league': '🏆',
-            'uefa champions league': '🏆',
-            'europa league': '🥈',
-            'uefa europa league': '🥈',
-            'libertadores': '🏆',
-            'copa libertadores': '🏆',
-            'sudamericana': '🥉',
-            'copa sudamericana': '🥉',
-            'eliminatorias': '🌎',
-            'mundial': '🌍',
-            'copa america': '🏆',
-            'eurocopa': '🏆',
-        }
         
-        for key, emoji in emoji_map.items():
-            if key in liga_lower:
-                return emoji
+        for emoji, keywords in EMOJI_LIGAS.items():
+            for keyword in keywords:
+                if keyword in liga_lower:
+                    return emoji
         
         return '⚽'
     
