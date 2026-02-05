@@ -6,13 +6,19 @@ import asyncio
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
+import pytz
 from dotenv import load_dotenv
 
 # Cargar variables de entorno desde archivo .env
 load_dotenv('config/.env')
 
+
 # Inicializar aplication de Flask
 app = Flask(__name__)
+
+
+# Definir zona horaria de Colombia
+TIMEZONE_COL = pytz.timezone('America/Bogota')
 
 
 # Traer variables de entorno
@@ -38,7 +44,8 @@ MESES_ES = {
 }
 
 def obtener_partidos():
-    hoy = datetime.now()
+    # Usar hora de Colombia
+    hoy = datetime.now(TIMEZONE_COL)
     dia = str(hoy.day)
     mes = MESES_ES[hoy.strftime('%B')]
     fecha_hoy = f"{dia} de {mes}"
