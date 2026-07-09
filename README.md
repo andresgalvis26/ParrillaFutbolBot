@@ -1,141 +1,225 @@
-# 🤖 ParrillaFutbolBot
+# ParrillaFutbolBot
 
-Bot de Telegram que proporciona información actualizada de partidos de fútbol obtenida desde FutbolRed.com.
+Bot de Telegram para consultar y enviar parrillas de partidos de futbol.
 
-![Bot](assets/ImagenPerfil.png)
+El repositorio hoy tiene dos modos distintos de ejecucion y no un unico flujo unificado:
 
-## 🚀 Características
+- `src/bot_local.py`: bot interactivo de Telegram por `polling`
+- `src/bot_parrilla.py`: script de ejecucion puntual para enviar mensajes a un `CHAT_ID`
 
-- 📅 **Partidos del día**: Información completa de partidos de hoy
-- 🗓️ **Partidos de mañana**: Previsualización de partidos del día siguiente  
-- 📊 **Resumen semanal**: Vista general de partidos de la semana
-- 🎨 **Interfaz visual**: Emojis por liga y formato atractivo
-- 📝 **Logging completo**: Sistema de logs para debugging
-- ⚡ **Múltiples modos**: Interactivo, cron job y producción
+## Estado Actual
 
-## 📁 Estructura del Proyecto
+Este README describe el estado real del proyecto hoy, incluyendo limitaciones conocidas.
 
-```
+- El modo mas confiable hoy es `src/bot_local.py`
+- `src/bot_parrilla.py` existe y se puede ejecutar, pero no todos sus comandos estan igual de consistentes
+- La documentacion anterior mencionaba `src/main.py`, pero ese archivo no existe en el repo actual
+- Los dos scripts no usan exactamente la misma fuente de datos
+
+## Estructura Real Del Proyecto
+
+```text
 ParrillaFutbolBot/
-├── src/                    # Código fuente
-│   ├── bot_parrilla.py    # Bot para cron jobs y automatización
-│   ├── bot_local.py       # Bot interactivo para desarrollo
-│   └── main.py            # Bot con Flask para producción
-├── utils/                 # Utilidades y testing
-├── logs/                  # Archivos de log
-├── assets/               # Recursos (imágenes, etc.)
-├── docs/                 # Documentación
-└── config/               # Configuración y dependencias
+|-- assets/
+|-- docs/
+|-- src/
+|   |-- bot_local.py
+|   |-- bot_parrilla.py
+|   `-- config/
+|       |-- .env.example
+|       |-- __init__.py
+|       |-- emoji_ligas.py
+|       `-- requirements.txt
+|-- tests/
+|   |-- run_bot_local.bat
+|   |-- run_bot_parrilla.bat
+|   `-- run_bot_parrilla_with_test_hoy.bat
+`-- requirements.txt
 ```
 
-## 🛠️ Instalación
+## Fuentes De Datos Actuales
 
-1. **Clonar el repositorio:**
-   ```bash
-   git clone https://github.com/andresgalvis26/ParrillaFutbolBot.git
-   cd ParrillaFutbolBot
-   ```
+Hoy el proyecto no usa una sola fuente de datos de forma uniforme:
 
-2. **Instalar dependencias:**
-   ```bash
-   pip install -r config/requirements.txt
-   ```
+- `src/bot_local.py` consulta `https://www.futbolred.com/parrilla-de-futbol`
+- `src/bot_parrilla.py` usa `https://partidos-de-hoy.co` para el modo `hoy`
+- `src/bot_parrilla.py` tambien conserva un scraper para `FutbolRed`, pero no esta integrado de forma consistente en todos los comandos
 
-3. **Configurar variables de entorno:**
-   ```bash
-   cp config/.env.example config/.env
-   # Editar config/.env con tus credenciales
-   ```
+## Requisitos
 
-## 🎮 Uso
+- Python 3.8+
+- Un bot de Telegram con `BOT_TOKEN`
+- Un `CHAT_ID` si vas a usar el modo de envio automatico
 
-### Para Desarrollo Local
+## Instalacion
+
+1. Clona el repositorio:
+
 ```bash
-python src/bot_local.py
+git clone https://github.com/andresgalvis26/ParrillaFutbolBot.git
+cd ParrillaFutbolBot
 ```
 
-### Para Cron Jobs (Automatización)
+2. Crea un entorno virtual opcional:
+
 ```bash
-# Partidos de hoy
-python src/bot_parrilla.py hoy
-
-# Partidos de mañana  
-python src/bot_parrilla.py manana
-
-# Resumen semanal
-python src/bot_parrilla.py semana
-
-# Modo prueba (sin enviar)
-python src/bot_parrilla.py test hoy
+python -m venv .venv
+.venv\Scripts\activate
 ```
 
-### Para Producción (Servidor)
+3. Instala dependencias:
+
 ```bash
-python src/main.py
+pip install -r requirements.txt
 ```
 
-## 📋 Comandos del Bot
+4. Crea el archivo `src/config/.env` a partir de `src/config/.env.example`:
 
-- `/start` - Menú principal con botones interactivos
-- `/hoy` - Partidos de hoy
-- `/manana` - Partidos de mañana  
-- `/semana` - Partidos de la semana
-- `/help` - Ayuda completa
-
-## ⚙️ Configuración
-
-### Variables de Entorno
-Crear archivo `config/.env`:
 ```env
 BOT_TOKEN=tu_bot_token_aqui
 CHAT_ID=tu_chat_id_aqui
-WEBHOOK_URL=https://tu-dominio.com  # Solo para producción
+WEBHOOK_URL=https://tu-dominio.com
+FLASK_PORT=10000
+DEBUG=False
+LOG_LEVEL=INFO
 ```
 
-### Cron Jobs
+## Importante Sobre Las Rutas
+
+Los dos scripts cargan variables asi:
+
+```python
+load_dotenv('config/.env')
+```
+
+Eso significa que hoy lo mas coherente es ejecutarlos desde la carpeta `src`, no desde la raiz del repo.
+
+## Como Levantarlo Hoy
+
+### Modo Recomendado: Bot Interactivo
+
+Desde la raiz del repo:
+
 ```bash
-# Envío diario a las 8:00 AM
-0 8 * * * cd /ruta/proyecto && python src/bot_parrilla.py hoy
-
-# Resumen semanal los lunes a las 9:00 AM
-0 9 * * 1 cd /ruta/proyecto && python src/bot_parrilla.py semana
+cd src
+python bot_local.py
 ```
 
-## 🔧 Tecnologías
+Que hace este modo:
 
-- **Python 3.8+**
-- **python-telegram-bot** - API de Telegram
-- **BeautifulSoup4** - Web scraping
-- **Flask** - Servidor web para producción
-- **Requests** - HTTP requests
-- **python-dotenv** - Manejo de variables de entorno
+- levanta un bot de Telegram por `polling`
+- responde a comandos y mensajes de texto
+- consulta partidos bajo demanda
+- devuelve informacion formateada en el chat
 
-## 📊 Logs
+Comandos disponibles en este modo:
 
-Los logs se guardan automáticamente en `logs/bot_parrilla.log` con información detallada sobre:
-- Conexiones y errores
-- Partidos encontrados
-- Mensajes enviados
-- Performance del scraping
+- `/start`
+- `/partidos`
+- `/hoy`
+- `/manana`
+- `/semana`
+- `/status`
+- `/help`
 
-## 🤝 Contribuir
+Tambien intenta responder a texto libre como `partidos`, `hoy`, `manana`, `semana`, `ayuda` y `status`.
 
-1. Fork el proyecto
-2. Crea una rama para tu feature (`git checkout -b feature/AmazingFeature`)
-3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
-4. Push a la rama (`git push origin feature/AmazingFeature`)
-5. Abre un Pull Request
+### Modo Script / Envio Puntual
 
-## 📄 Licencia
+Desde la raiz del repo:
 
-Este proyecto está bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) para detalles.
+```bash
+cd src
+python bot_parrilla.py hoy
+```
 
-## 📞 Soporte
+Otros comandos implementados:
 
-Para soporte o preguntas:
-- 🐛 **Issues**: [GitHub Issues](https://github.com/andresgalvis26/ParrillaFutbolBot/issues)
-- 📧 **Email**: tu-email@example.com
+```bash
+cd src
+python bot_parrilla.py manana
+python bot_parrilla.py semana
+python bot_parrilla.py todo
+python bot_parrilla.py test hoy
+python bot_parrilla.py test manana
+python bot_parrilla.py test semana
+```
 
----
+Que hace este modo:
 
-⭐ **¡Dale una estrella al repo si te gustó!** ⭐
+- genera un mensaje con partidos
+- envia el mensaje al `CHAT_ID` configurado
+- en modo `test`, imprime el resultado en consola sin enviar a Telegram
+
+## Como Funciona Cada Script
+
+### `src/bot_local.py`
+
+- usa `python-telegram-bot`
+- hace scraping de `FutbolRed`
+- formatea partidos con emojis por liga
+- ofrece botones inline y comandos de Telegram
+- corre de manera continua hasta que lo detengas
+
+### `src/bot_parrilla.py`
+
+- usa `python-telegram-bot` solo para el envio del mensaje
+- ejecuta scraping y formateo de forma puntual
+- esta pensado para cron jobs o ejecuciones programadas
+- escribe logs en consola y, si puede, tambien en `logs/bot_parrilla.log`
+
+## Limitaciones Y Problemas Conocidos
+
+Estos puntos reflejan el estado real actual del codigo:
+
+1. `src/main.py` no existe.
+   La documentacion historica mencionaba un modo produccion con Flask, pero hoy ese archivo no esta en el repositorio.
+
+2. `src/bot_parrilla.py` no esta completamente consistente en todos sus modos.
+   Dentro de `obtener_partidos()`, el modo `hoy` inicializa `PartidosDeHoyScrapper()`, pero los modos `manana` y `semana` referencian `scraper` sin inicializar. En el estado actual, esos comandos pueden fallar.
+
+3. Las fuentes de datos no estan unificadas.
+   `bot_local.py` y `bot_parrilla.py` no consultan exactamente el mismo sitio ni siguen el mismo flujo.
+
+4. Los scripts `.bat` bajo `tests/` parecen desactualizados.
+   Hoy hacen `cd` a la carpeta `tests` y luego intentan ejecutar `python src/...`, pero esa ruta no existe relativa a `tests`.
+
+5. La automatizacion documentada antes como flujo estable de produccion ya no coincide totalmente con el estado del repo.
+
+## Automatizacion
+
+El proyecto parece haber sido pensado para ejecuciones programadas de `bot_parrilla.py`, pero con el estado actual hay que tomarlo como un flujo parcialmente funcional, no como un despliegue estable ya validado.
+
+Si quieres automatizar el modo hoy, el comando objetivo seria algo como:
+
+```bash
+cd /ruta/al/proyecto/src && python bot_parrilla.py hoy
+```
+
+En Windows, el equivalente seria ejecutar el script desde `src`.
+
+## Dependencias
+
+Las dependencias actuales estan duplicadas en:
+
+- `requirements.txt`
+- `src/config/requirements.txt`
+
+Ambos archivos hoy contienen el mismo listado principal, incluyendo:
+
+- `python-telegram-bot`
+- `requests`
+- `beautifulsoup4`
+- `python-dotenv`
+- `flask`
+
+## Recomendacion De Uso Hoy
+
+Si solo quieres levantar el proyecto y probarlo con la menor friccion posible, usa:
+
+```bash
+cd src
+python bot_local.py
+```
+
+Ese es el camino mas consistente con el codigo actual.
