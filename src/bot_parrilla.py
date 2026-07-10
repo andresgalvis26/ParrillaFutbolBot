@@ -2,17 +2,17 @@
 Módulo principal del bot de partidos de fútbol.
 
 Extrae partidos desde dos fuentes posibles:
-  - 'futbolred':       FutbolRed.com (usa curl_cffi para bypass de Akamai CDN)
-  - 'partidos-de-hoy': Partidos-de-hoy.co (más estable, usando requests)
+    - 'futbolred':       FutbolRed.com (usa curl_cffi para bypass de Akamai CDN)
+    - 'partidos-de-hoy': Partidos-de-hoy.co (más estable, usando requests)
 
 La fuente se selecciona por este orden de precedencia:
-  1. Parámetro CLI:  --source futbolred|partidos-de-hoy
-  2. Variable de entorno:  SCRAPER_SOURCE (config/.env)
-  3. Default:  'partidos-de-hoy' (lo que está en producción)
+    1. Parámetro CLI:  --source futbolred|partidos-de-hoy
+    2. Variable de entorno:  SCRAPER_SOURCE (config/.env)
+    3. Default:  'partidos-de-hoy' (lo que está en producción)
 
 Uso CLI:
-  python bot_parrilla.py test [hoy|manana|semana] [--source futbolred|partidos-de-hoy]
-  python bot_parrilla.py hoy|manana|semana|todo [--source fuente]
+    python bot_parrilla.py test [hoy|manana|semana] [--source futbolred|partidos-de-hoy]
+    python bot_parrilla.py hoy|manana|semana|todo [--source fuente]
 """
 
 import requests
@@ -31,7 +31,7 @@ from config.emoji_ligas import EMOJI_LIGAS
 from curl_cffi import requests as curl_requests
 
 # Cargar variables de entorno desde un archivo .env
-load_dotenv("config/.env")
+load_dotenv(os.path.join(os.path.dirname(__file__), "config", ".env"))
 
 # === CONFIGURACIÓN ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")

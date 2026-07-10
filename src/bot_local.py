@@ -36,7 +36,7 @@ setup_logging()
 logger = logging.getLogger('ParrillaBot')
 
 # Cargar variables de entorno
-load_dotenv('config/.env')
+load_dotenv(os.path.join(os.path.dirname(__file__), 'config', '.env'))
 
 # Traer variables de entorno
 BOT_TOKEN = os.getenv('BOT_TOKEN')
