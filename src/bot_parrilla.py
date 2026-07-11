@@ -20,7 +20,7 @@ import requests
 from bs4 import BeautifulSoup
 from telegram import Bot
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import os
 from dotenv import load_dotenv
 import logging
@@ -42,6 +42,9 @@ URL = "https://www.futbolred.com/parrilla-de-futbol"
 # Fuentes disponibles y default
 SCRAPER_SOURCES = ["futbolred", "partidos-de-hoy", "futbolenvivo"]
 DEFAULT_SOURCE = os.getenv("SCRAPER_SOURCE", "partidos-de-hoy")
+
+# Colombia: UTC-5
+COL_TZ = timezone(timedelta(hours=-5))
 
 
 # Configurar logging de manera más robusta
@@ -133,7 +136,7 @@ class DateUtils:
     def get_fecha_es(cls, fecha: datetime = None) -> str:
         """Obtiene la fecha en formato español: '10 de julio'"""
         if fecha is None:
-            fecha = datetime.now()
+            fecha = datetime.now(COL_TZ)
 
         dia = str(fecha.day)
         mes = cls.MESES_ES[fecha.strftime("%B")]
@@ -147,7 +150,7 @@ class DateUtils:
     @classmethod
     def get_manana(cls) -> str:
         """Obtiene la fecha de mañana en español"""
-        manana = datetime.now() + timedelta(days=1)
+        manana = datetime.now(COL_TZ) + timedelta(days=1)
         return cls.get_fecha_es(manana)
 
     @classmethod
@@ -307,7 +310,7 @@ class FutbolRedScraper:
         requests HTTP cuando se consultan varias fechas seguidas
         (ej: modo "semana" que llama obtener_partidos_fecha 7 veces).
         """
-        ahora = datetime.now().timestamp()
+        ahora = datetime.now(COL_TZ).timestamp()
         if self._cache_soup and (ahora - self._cache_timestamp) < self._cache_ttl:
             logger.debug("Usando caché de la página")
             return self._cache_soup
@@ -518,7 +521,7 @@ class PartidosDeHoyScrapper:
 
     def _obtener_soup(self, url: str) -> BeautifulSoup | None:
         """Retorna el soup de una URL, usando caché por URL si está vigente."""
-        ahora = datetime.now().timestamp()
+        ahora = datetime.now(COL_TZ).timestamp()
         cached = self._cache.get(url)
         if cached and (ahora - cached[1]) < self._cache_ttl:
             logger.debug("PartidosDeHoy: usando caché para %s", url)
@@ -662,7 +665,7 @@ class FutbolEnVivoColombiaScrapper:
         return calendario.get(fecha_es, [])
 
     def _obtener_soup(self) -> BeautifulSoup | None:
-        ahora = datetime.now().timestamp()
+        ahora = datetime.now(COL_TZ).timestamp()
         cached = self._cache.get(self.URL)
         if cached and (ahora - cached[1]) < self._cache_ttl:
             return cached[0]
@@ -787,7 +790,7 @@ class DataFormatter:
         pie_fuente = f"\n📡 _Fuente: {fuente}_" if fuente else ""
 
         if not partidos:
-            return f"{encabezado}\n\n❌ No se encontraron partidos para esta fecha.\n\n🔄 _Actualizado: {datetime.now().strftime('%H:%M')}h_{pie_fuente}"
+            return f"{encabezado}\n\n❌ No se encontraron partidos para esta fecha.\n\n🔄 _Actualizado: {datetime.now(COL_TZ).strftime('%H:%M')}h_{pie_fuente}"
 
         mensaje = f"{encabezado}\n\n"
 
@@ -937,7 +940,7 @@ def obtener_partidos(tipo: str = "hoy", source: str = None) -> str:
         elif tipo == "semana":
             partidos_semana = {}
             for i in range(7):
-                fecha_obj = datetime.now() + timedelta(days=i)
+                fecha_obj = datetime.now(COL_TZ) + timedelta(days=i)
                 fecha_str = DateUtils.get_fecha_es(fecha_obj)
                 partidos = scraper.obtener_partidos_fecha(fecha_str)
                 if partidos:

@@ -21,7 +21,7 @@ import os
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters, CallbackQueryHandler
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 from typing import Dict
 
@@ -44,6 +44,8 @@ if not BOT_TOKEN:
 # Preferencias de fuente por chat_id (en memoria: se pierde al reiniciar el bot)
 # Estructura: {chat_id: 'futbolred' | 'partidos-de-hoy'}
 user_sources: Dict[int, str] = {}
+
+COL_TZ = timezone(timedelta(hours=-5))
 
 # Nombres para mostrar
 SOURCE_DISPLAY = {
@@ -87,7 +89,7 @@ def obtener_partidos(fecha_objetivo=None, source: str = None, chat_id: int = Non
         str: Mensaje formateado con los partidos en Markdown para Telegram.
     """
     if fecha_objetivo is None:
-        fecha_objetivo = datetime.now()
+        fecha_objetivo = datetime.now(COL_TZ)
 
     dia = str(fecha_objetivo.day)
     mes = DateUtils.MESES_ES[fecha_objetivo.strftime('%B')]
@@ -199,7 +201,7 @@ async def manana(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando /manana."""
     chat_id = update.effective_chat.id
     await update.message.reply_text("🔍 Buscando partidos de mañana...")
-    fecha_manana = datetime.now() + timedelta(days=1)
+    fecha_manana = datetime.now(COL_TZ) + timedelta(days=1)
     texto = obtener_partidos(fecha_manana, chat_id=chat_id)
     await update.message.reply_text(texto, parse_mode='Markdown')
 
@@ -209,7 +211,7 @@ def generar_mensaje_semana(chat_id: int = None) -> str:
     mensaje_completo = "📅 *Partidos de la Semana:*\n\n"
 
     for i in range(7):
-        fecha = datetime.now() + timedelta(days=i)
+        fecha = datetime.now(COL_TZ) + timedelta(days=i)
         dia_nombre = ["Hoy", "Mañana", "Pasado mañana"][i] if i < 3 else fecha.strftime("%A")
 
         partidos_dia = obtener_partidos(fecha, chat_id=chat_id)
@@ -262,7 +264,7 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🌐 FutbolRed: {status_futbolred}\n"
         f"⚽ PartidosDeHoy: {status_partidos}\n"
         f"📋 Tu fuente: `{display}`\n"
-        f"🕐 Hora: {datetime.now().strftime('%H:%M:%S')}\n\n"
+        f"🕐 Hora: {datetime.now(COL_TZ).strftime('%H:%M:%S')}\n\n"
         "💡 Usá /start para el menú o /source para cambiar fuente."
     )
     await update.message.reply_text(mensaje, parse_mode='Markdown')
@@ -353,7 +355,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == CB_MANANA:
         await query.edit_message_text("🔍 Buscando partidos de mañana...")
-        fecha_manana = datetime.now() + timedelta(days=1)
+        fecha_manana = datetime.now(COL_TZ) + timedelta(days=1)
         texto = obtener_partidos(fecha_manana, chat_id=chat_id)
         await query.message.reply_text(texto, parse_mode='Markdown')
         return
@@ -382,7 +384,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(texto, parse_mode='Markdown')
     elif 'mañana' in text:
         await update.message.reply_text("🔍 Buscando partidos de mañana...")
-        fecha_manana = datetime.now() + timedelta(days=1)
+        fecha_manana = datetime.now(COL_TZ) + timedelta(days=1)
         texto = obtener_partidos(fecha_manana, chat_id=chat_id)
         await update.message.reply_text(texto, parse_mode='Markdown')
     elif 'semana' in text:

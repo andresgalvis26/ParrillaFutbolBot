@@ -193,6 +193,10 @@ En Windows:
 cd /d D:\ruta\al\proyecto\src && python bot_parrilla.py hoy
 ```
 
+## Zona Horaria
+
+El bot opera en hora **Colombia (UTC-5)**. Todos los `datetime.now()` usan `datetime.now(timezone(timedelta(hours=-5)))` para que funcione correctamente desde cualquier servidor (Render usa UTC, por ejemplo).
+
 ## Notas
 
 - `src/main.py` no existe. La documentacion historica mencionaba un modo de produccion con Flask que ya no esta en el codigo.

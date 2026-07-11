@@ -160,3 +160,15 @@ El diccionario incluye mas de 80 paises con sus variantes idiomaticas.
 - Los scripts `.bat` en `tests/` pueden estar desactualizados respecto a las rutas actuales.
 - `src/main.py` no existe en el repositorio. Era parte de un flujo de produccion anterior con Flask que ya no se mantiene.
 - Para cambiar la fuente en el bot interactivo, usa `/source` o la opcion "Cambiar Fuente" del menu.
+
+## Zona horaria
+
+Todo el bot opera en **Colombia (UTC-5)** independientemente de donde se ejecute:
+
+```python
+COL_TZ = timezone(timedelta(hours=-5))
+```
+
+Esto es esencial porque servicios como Render usan UTC por defecto. Sin esta correccion, `datetime.now()` devolveria el dia UTC y los comandos `/hoy`, `/manana` y `/semana` calcularian fechas incorrectas (tipicamente un dia adelantado para Colombia).
+
+La constante `COL_TZ` se define en ambos scripts (`bot_parrilla.py` y `bot_local.py`) y todos los `datetime.now()` del proyecto usan `datetime.now(COL_TZ)`.
