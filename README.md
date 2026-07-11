@@ -84,7 +84,7 @@ BOT_TOKEN=tu_bot_token_aqui
 CHAT_ID=tu_chat_id_aqui
 WEBHOOK_URL=https://tu-dominio.com
 
-# Fuente de datos: 'futbolred' o 'partidos-de-hoy' (default)
+# Fuente de datos: 'futbolred', 'partidos-de-hoy' o 'futbolenvivo' (default)
 SCRAPER_SOURCE=partidos-de-hoy
 
 LOG_LEVEL=INFO
@@ -117,7 +117,7 @@ Comandos disponibles: `/start`, `/hoy`, `/manana`, `/semana`, `/source`, `/statu
 
 Tambien responde a texto libre como `partidos`, `hoy`, `manana`, `semana`, `fuente`, `ayuda`, `status`.
 
-El bot guía al usuario con un menú interactivo: al iniciar (`/start`) pregunta la fuente de datos, luego muestra el menú principal con botones para Hoy, Mañana, Semana, Cambiar Fuente y Ayuda.
+El bot guía al usuario con un menú interactivo: al iniciar (`/start`) pregunta la fuente de datos (`futbolred`, `partidos-de-hoy` o `futbolenvivo`), luego muestra el menú principal con botones para Hoy, Mañana, Semana, Cambiar Fuente y Ayuda.
 
 ### Modo Script / Envio Puntual
 
@@ -136,9 +136,11 @@ python bot_parrilla.py test manana   # prueba de manana en consola
 ```bash
 python bot_parrilla.py hoy --source futbolred
 python bot_parrilla.py test --source partidos-de-hoy
+python bot_parrilla.py semana --source futbolenvivo
 ```
 
 El `--source` se puede usar con cualquier comando (`hoy`, `manana`, `semana`, `todo`, `test`).
+Fuentes disponibles: `futbolred`, `partidos-de-hoy`, `futbolenvivo`.
 
 ## Como Funciona Cada Script
 
@@ -147,7 +149,8 @@ El `--source` se puede usar con cualquier comando (`hoy`, `manana`, `semana`, `t
 - Entrypoint principal para logica de scraping y formateo
 - Usa `python-telegram-bot` solo para el envio del mensaje
 - `FutbolRedScraper`: usa `curl_cffi` para evitar el bloqueo de Akamai CDN
-- `PartidosDeHoyScrapper`: usa `requests` normal
+- `PartidosDeHoyScrapper`: usa `requests` normal (fallback a calendario para fechas futuras)
+- `FutbolEnVivoColombiaScrapper`: usa `requests`, ~15-30 partidos/dia, ~15 dias visibles
 - `get_scraper()`: factory que retorna el scraper segun la fuente configurada
 - Pensado para cron jobs o ejecuciones programadas
 - Escribe logs en consola y en `logs/bot_parrilla.log`
@@ -185,12 +188,14 @@ Para ejecuciones programadas (cron / tareas programadas):
 
 ```bash
 cd /ruta/al/proyecto/src && python bot_parrilla.py hoy --source futbolred
+cd /ruta/al/proyecto/src && python bot_parrilla.py hoy --source futbolenvivo
 ```
 
 En Windows:
 
 ```bash
-cd /d D:\ruta\al\proyecto\src && python bot_parrilla.py hoy
+cd /d D:\ruta\al\proyecto\src && python bot_parrilla.py hoy --source futbolred
+cd /d D:\ruta\al\proyecto\src && python bot_parrilla.py hoy --source futbolenvivo
 ```
 
 ## Zona Horaria
