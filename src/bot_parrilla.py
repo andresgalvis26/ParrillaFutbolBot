@@ -40,7 +40,7 @@ CHAT_ID = os.getenv("CHAT_ID")
 URL = "https://www.futbolred.com/parrilla-de-futbol"
 
 # Fuentes disponibles y default
-SCRAPER_SOURCES = ["futbolred", "partidos-de-hoy"]
+SCRAPER_SOURCES = ["futbolred", "partidos-de-hoy", "futbolenvivo"]
 DEFAULT_SOURCE = os.getenv("SCRAPER_SOURCE", "partidos-de-hoy")
 
 
@@ -626,6 +626,144 @@ class PartidosDeHoyScrapper:
         return resultado
 
 
+class FutbolEnVivoColombiaScrapper:
+    """Scraper para futbolenvivocolombia.com
+
+    Sitio con tabla por día (table.tablaPrincipal) que lista partidos
+    con hora, competición, equipos y canales. Soporta ~15 días visibles.
+    """
+
+    URL = "https://www.futbolenvivocolombia.com/"
+
+    def __init__(self):
+        self.session = requests.Session()
+        self.session.headers.update({
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "Accept-Language": "es-ES,es;q=0.9",
+        })
+        self._cache: dict = {}
+        self._cache_ttl = 30
+
+    def obtener_partidos_hoy(self) -> List[Partido]:
+        """Partidos de hoy."""
+        return self.obtener_partidos_fecha(DateUtils.get_hoy())
+
+    def obtener_partidos_manana(self) -> List[Partido]:
+        """Partidos de mañana."""
+        return self.obtener_partidos_fecha(DateUtils.get_manana())
+
+    def obtener_partidos_fecha(self, fecha_es: str) -> List[Partido]:
+        """Partidos para una fecha específica en español."""
+        calendario = self._obtener_todos()
+        return calendario.get(fecha_es, [])
+
+    def _obtener_soup(self) -> BeautifulSoup | None:
+        ahora = datetime.now().timestamp()
+        cached = self._cache.get(self.URL)
+        if cached and (ahora - cached[1]) < self._cache_ttl:
+            return cached[0]
+        try:
+            resp = self.session.get(self.URL, timeout=20)
+            resp.raise_for_status()
+        except requests.RequestException as e:
+            logger.error("FutbolEnVivoColombia error: %s", e)
+            return None
+        soup = BeautifulSoup(resp.text, "html.parser")
+        self._cache[self.URL] = (soup, ahora)
+        return soup
+
+    def _obtener_todos(self) -> Dict[str, List[Partido]]:
+        """Retorna dict {fecha_es: [Partido]} con todos los días visibles."""
+        soup = self._obtener_soup()
+        if soup is None:
+            return {}
+
+        resultado: Dict[str, List[Partido]] = {}
+
+        for tabla in soup.select("table.tablaPrincipal"):
+            filas = tabla.find_all("tr")
+            if not filas:
+                continue
+
+            # Cabecera del día
+            cabecera = filas[0]
+            texto_cabecera = cabecera.get_text(" ", strip=True)
+            match_fecha = re.search(r"(\d{1,2}/\d{1,2}/\d{4})", texto_cabecera)
+            if not match_fecha:
+                continue
+
+            try:
+                dt = datetime.strptime(match_fecha.group(1), "%d/%m/%Y")
+                fecha_es = DateUtils.get_fecha_es(dt)
+            except ValueError:
+                continue
+
+            competicion_actual = "Fútbol"
+            partidos: List[Partido] = []
+
+            for fila in filas[1:]:
+                clases = fila.get("class") or []
+
+                # Fila de competición
+                if "cabeceraCompericion" in clases:
+                    comp_td = fila.select_one("td")
+                    competicion_actual = "Fútbol"
+                    if comp_td:
+                        # Algunas filas tienen link, otras solo texto
+                        comp_link = comp_td.select_one("a")
+                        if comp_link:
+                            competicion_actual = comp_link.get_text(strip=True)
+                        else:
+                            competicion_actual = comp_td.get_text(strip=True)
+                    continue
+
+                # Fila de partido
+                hora_el = fila.select_one("td.hora")
+                if not hora_el:
+                    continue
+
+                hora = hora_el.get_text(strip=True)
+
+                # Equipos: múltiples formatos
+                local_el = fila.select_one("td.local a span, td.local span[title], td.local span")
+                visita_el = fila.select_one("td.visitante a span, td.visitante span[title], td.visitante span")
+                if not local_el or not visita_el:
+                    continue
+
+                local = local_el.get_text(strip=True)
+                visita = visita_el.get_text(strip=True)
+
+                # Canales
+                canales_el = fila.select_one("td.canales")
+                canal = "Por confirmar"
+                if canales_el:
+                    items = canales_el.select("li a")
+                    if items:
+                        canal = items[0].get_text(strip=True)
+                    else:
+                        # Canal sin link (ej. simple texto)
+                        txt = canales_el.get_text(" ", strip=True)
+                        if txt:
+                            canal = txt.split("  ")[0][:60]
+
+                partidos.append(Partido(
+                    equipos=f"{local} VS {visita}",
+                    liga=competicion_actual,
+                    hora=hora,
+                    canal=canal,
+                    fecha=fecha_es,
+                ))
+
+            if partidos:
+                resultado[fecha_es] = partidos
+
+        return resultado
+
+
 class DataFormatter:
     """Formateador de datos para mensajes del bot.
 
@@ -717,7 +855,8 @@ def get_scraper(source: str = None):
 
     Fuentes disponibles:
     - 'futbolred'      : Scraper de futbolred.com (usa curl_cffi para Akamai)
-    - 'partidos-de-hoy': Scraper de partidos-de-hoy.co (más estable)
+    - 'partidos-de-hoy': Scraper de partidos-de-hoy.co
+    - 'futbolenvivo'   : Scraper de futbolenvivocolombia.com
 
     Uso:
         scraper, fuente = get_scraper('futbolred')
@@ -737,6 +876,10 @@ def get_scraper(source: str = None):
     elif source in ("partidos_de_hoy", "partidos-de-hoy"):
         logger.info("Usando scraper: partidos-de-hoy.co")
         return PartidosDeHoyScrapper(), "partidos-de-hoy.co"
+
+    elif source in ("futbolenvivo", "futbolenvivocolombia"):
+        logger.info("Usando scraper: futbolenvivocolombia.com")
+        return FutbolEnVivoColombiaScrapper(), "futbolenvivocolombia.com"
 
     else:
         logger.error(f"Fuente no válida: '{source}'. Opciones: {SCRAPER_SOURCES}")

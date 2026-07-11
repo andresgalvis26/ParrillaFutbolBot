@@ -17,6 +17,7 @@ El proyecto soporta dos fuentes intercambiables:
 |--------|-----|-----------|--------|
 | `futbolred` | futbolred.com | `curl_cffi` (bypass Akamai CDN) | ✅ |
 | `partidos-de-hoy` | partidos-de-hoy.co | `requests` | ✅ |
+| `futbolenvivo` | futbolenvivocolombia.com | `requests` | ✅ |
 
 La fuente se selecciona en este orden de precedencia:
 
@@ -199,6 +200,7 @@ cd /d D:\ruta\al\proyecto\src && python bot_parrilla.py hoy
 - Si la fuente `futbolred` falla, verifica que `curl_cffi` este correctamente instalado.
 - La fuente `partidos-de-hoy` muestra el dia actual en portada; los demas dias se resuelven via `calendario-de-partidos-en-colombia/` que tiene las pestañas con todas las fechas en HTML.
 - La fuente `futbolred` soporta varios dias (tablas separadas por fecha en la misma pagina).
+- La fuente `futbolenvivo` es la que mas partidos trae (~15-30 por dia, ~15 dias visibles). Usa `tablaPrincipal` con filas por competicion y partido.
 
 ## Recomendacion De Uso
 

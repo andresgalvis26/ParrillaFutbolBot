@@ -49,15 +49,18 @@ user_sources: Dict[int, str] = {}
 SOURCE_DISPLAY = {
     'futbolred': 'futbolred.com',
     'partidos-de-hoy': 'partidos-de-hoy.co',
+    'futbolenvivo': 'futbolenvivocolombia.com',
 }
 SOURCE_EMOJI = {
     'futbolred': '🌐',
     'partidos-de-hoy': '⚽',
+    'futbolenvivo': '📺',
 }
 
 # === CALLBACK DATA CONSTANTS ===
 CB_SOURCE_FUTBOLRED = 'src_futbolred'
 CB_SOURCE_PARTIDOS = 'src_partidos'
+CB_SOURCE_FUTBOLENVIVO = 'src_futbolenvivo'
 CB_HOY = 'partidos_hoy'
 CB_MANANA = 'partidos_manana'
 CB_SEMANA = 'partidos_semana'
@@ -134,11 +137,11 @@ def menu_fuentes(chat_id: int) -> tuple:
     actual = obtener_source_usuario(chat_id)
 
     keyboard = []
-    for key in ('futbolred', 'partidos-de-hoy'):
+    source_keys = [('futbolred', CB_SOURCE_FUTBOLRED), ('partidos-de-hoy', CB_SOURCE_PARTIDOS), ('futbolenvivo', CB_SOURCE_FUTBOLENVIVO)]
+    for key, cb in source_keys:
         display = SOURCE_DISPLAY[key]
         emoji = SOURCE_EMOJI[key]
         marca = " ✅" if key == actual else ""
-        cb = CB_SOURCE_FUTBOLRED if key == 'futbolred' else CB_SOURCE_PARTIDOS
         keyboard.append([InlineKeyboardButton(f"{emoji} {display}{marca}", callback_data=cb)])
 
     keyboard.append([InlineKeyboardButton("🔙 Volver", callback_data='volver_menu')])
@@ -312,6 +315,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == CB_SOURCE_PARTIDOS:
         user_sources[chat_id] = 'partidos-de-hoy'
         fuente = SOURCE_DISPLAY['partidos-de-hoy']
+        mensaje, markup = menu_principal(chat_id)
+        await query.edit_message_text(
+            f"✅ *Fuente seleccionada:* {fuente}\n\n{mensaje}",
+            parse_mode='Markdown',
+            reply_markup=markup,
+        )
+        return
+
+    if data == CB_SOURCE_FUTBOLENVIVO:
+        user_sources[chat_id] = 'futbolenvivo'
+        fuente = SOURCE_DISPLAY['futbolenvivo']
         mensaje, markup = menu_principal(chat_id)
         await query.edit_message_text(
             f"✅ *Fuente seleccionada:* {fuente}\n\n{mensaje}",

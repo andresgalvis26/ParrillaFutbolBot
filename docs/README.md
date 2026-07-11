@@ -8,12 +8,13 @@ Complemento tecnico al `README.md` principal del proyecto.
 
 ```
 bot_parrilla.py (logica central)
-    |-- FutbolRedScraper       # curl_cffi + BeautifulSoup
-    |-- PartidosDeHoyScrapper  # requests + BeautifulSoup
-    |-- get_scraper()          # Factory segun fuente/config
-    |-- DateUtils              # Formateo y parseo de fechas
-    |-- Partido                # Modelo de datos
-    |-- DataFormatter          # Formateo a Markdown para Telegram
+    |-- FutbolRedScraper           # curl_cffi + BeautifulSoup
+    |-- PartidosDeHoyScrapper      # requests + BeautifulSoup
+    |-- FutbolEnVivoColombiaScrapper  # requests + BeautifulSoup (tablas)
+    |-- get_scraper()              # Factory segun fuente/config
+    |-- DateUtils                  # Formateo y parseo de fechas
+    |-- Partido                    # Modelo de datos
+    |-- DataFormatter              # Formateo a Markdown para Telegram
     |
     v
 bot_local.py (hereda de bot_parrilla.py)
@@ -21,6 +22,7 @@ bot_local.py (hereda de bot_parrilla.py)
     |-- user_sources: Dict[int, str]  (fuente preferida por chat en memoria)
     |-- Application polling de python-telegram-bot
     |-- Handlers: comandos, botones inline, texto libre
+    |-- Menu interactivo multi-paso: /start -> seleccion fuente -> menu principal
     |-- Menu interactivo multi-paso: /start -> seleccion fuente -> menu principal
 ```
 
@@ -41,8 +43,9 @@ La funcion `get_scraper(source=None)` en `bot_parrilla.py` determina el scraper 
 def get_scraper(source=None):
     if source is None:
         source = os.getenv('SCRAPER_SOURCE', 'partidos-de-hoy')
-    # 'futbolred' -> FutbolRedScraper()
+    # 'futbolred'      -> FutbolRedScraper()
     # 'partidos-de-hoy' -> PartidosDeHoyScrapper()
+    # 'futbolenvivo'    -> FutbolEnVivoColombiaScrapper()
 ```
 
 ## Scrapers
@@ -70,6 +73,27 @@ def get_scraper(source=None):
 - La portada solo muestra el tab del dia actual en HTML (los demas se cargan via JS). El metodo `obtener_partidos_fecha()` consulta primero la portada y, si no encuentra datos para la fecha solicitada, hace fallback al calendario donde **si** estan todas las pestañas renderizadas en HTML (tipicamente 6-7 dias).
 - **Parseo del calendario**: itera sobre pares `.scf-tab` / `.scf-tabpanel`, extrae la fecha de cada tab y asigna los partidos de su panel correspondiente.
 - Soporta `obtener_partidos_manana()` y `obtener_partidos_fecha()` para fechas dentro del rango del calendario.
+
+### FutbolEnVivoColombiaScrapper
+
+- **URL**: `https://www.futbolenvivocolombia.com/`
+- **Proteccion**: Sin CDN agresivo, funciona con `requests` normal
+- **Estructura HTML**: Tablas `table.tablaPrincipal` con una por dia (~15 dias visibles en HTML)
+  ```html
+  <table class="tablaPrincipal">
+    <tr class="cabeceraTabla"><td>Partidos de hoy viernes, 10/07/2026</td></tr>
+    <tr class="cabeceraCompericion"><td>FIFA Copa Mundial 2026</td></tr>
+    <tr>
+      <td class="hora">14:00</td>
+      <td class="local">España</td>
+      <td class="visitante">Bélgica</td>
+      <td class="canales">DSports</td>
+    </tr>
+  </table>
+  ```
+- La fecha se extrae con regex `(\d{1,2}/\d{1,2}/\d{4})` desde la cabecera de cada tabla.
+- Soporta `obtener_partidos_manana()` y `obtener_partidos_fecha()` sin necesidad de fallback (todas las fechas estan en la misma pagina).
+- Es la fuente que mas partidos aporta por dia (~20-30).
 
 ## Comandos CLI (bot_parrilla.py)
 
