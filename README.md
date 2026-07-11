@@ -68,7 +68,7 @@ cd ParrillaFutbolBot
 
 ```bash
 python -m venv .venv
-.venv\Scripts\activate
+.\.venv\Scripts\Activate.ps1
 ```
 
 3. Instala dependencias:
