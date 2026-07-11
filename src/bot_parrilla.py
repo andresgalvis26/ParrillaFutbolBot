@@ -15,6 +15,7 @@ Uso CLI:
     python bot_parrilla.py hoy|manana|semana|todo [--source fuente]
 """
 
+import re
 import requests
 from bs4 import BeautifulSoup
 from telegram import Bot
@@ -24,7 +25,7 @@ import os
 from dotenv import load_dotenv
 import logging
 from typing import List, Dict, Optional
-from config.emoji_ligas import EMOJI_LIGAS
+from config.emoji_ligas import EMOJI_LIGAS, BANDERAS
 
 # curl_cffi: librería que imita el fingerprint TLS de Chrome para evitar
 # el bloqueo de Akamai CDN (edgesuite.net) en futbolred.com
@@ -173,7 +174,7 @@ class Partido:
     """Modelo de datos para un partido de fútbol.
 
     Almacena equipos, liga, hora, canal y fecha,
-    y formatea el mensaje para Telegram con emojis.
+    y formatea el mensaje para Telegram con emojis y banderas.
     """
 
     def __init__(
@@ -184,12 +185,58 @@ class Partido:
         canal: str,
         fecha: Optional[str] = None,
     ):
-        self.equipos = equipos
+        self.equipos_original = equipos
+        self.equipos = self._agregar_banderas(equipos)
         self.liga = liga
         self.hora = hora
         self.canal = canal
         self.fecha = fecha
         self.emoji_liga = self._get_emoji_liga(liga)
+
+    @staticmethod
+    def _normalizar(texto: str) -> str:
+        """Elimina acentos y normalize caracteres para busqueda en BANDERAS.
+
+        Ej: "España" -> "espana", "Bélgica" -> "belgica"
+        """
+        texto = texto.lower()
+        texto = texto.replace("á", "a").replace("é", "e").replace("í", "i")
+        texto = texto.replace("ó", "o").replace("ú", "u")
+        texto = texto.replace("ü", "u").replace("ñ", "n")
+        return texto
+
+    @staticmethod
+    def _agregar_banderas(equipos: str) -> str:
+        """Parsea los nombres de los equipos y les antepone su bandera.
+
+        Soporta dos formatos de entrada:
+        - "España-Bélgica"     (FutbolRed, guion)
+        - "Spain VS Belgium"   (PartidosDeHoy, " VS ")
+
+        Busca cada equipo en BANDERAS (config/emoji_ligas.py)
+        y si encuentra coincidencia, muestra:  🇪🇸 España  vs  🇧🇪 Bélgica
+        Si no encuentra banderas, devuelve el texto original.
+        """
+        # Detectar separador
+        if " VS " in equipos:
+            partes = [p.strip() for p in equipos.split(" VS ", 1)]
+        elif "-" in equipos:
+            partes = [p.strip() for p in equipos.split("-", 1)]
+        else:
+            return equipos
+
+        if len(partes) != 2:
+            return equipos
+
+        local, visitante = partes
+
+        flag_local = BANDERAS.get(Partido._normalizar(local), "")
+        flag_visit = BANDERAS.get(Partido._normalizar(visitante), "")
+
+        if not flag_local and not flag_visit:
+            return equipos
+
+        return f"{flag_local}{local}  vs  {flag_visit}{visitante}"
 
     def _get_emoji_liga(self, liga: str) -> str:
         """Obtiene emoji según la liga, buscando en EMOJI_LIGAS (config/emoji_ligas.py)"""
@@ -247,6 +294,30 @@ class FutbolRedScraper:
                 "Upgrade-Insecure-Requests": "1",
             }
         )
+        # Caché: evita multiples requests HTTP cuando se consultan varias fechas
+        # (ej: comando "semana" que llama obtener_partidos_fecha 7 veces seguidas)
+        self._cache_soup = None
+        self._cache_timestamp = 0.0
+        self._cache_ttl = 30  # segundos antes de refrescar el caché
+
+    def _obtener_soup(self) -> BeautifulSoup:
+        """Retorna el soup de la página, usando caché si está vigente.
+
+        El caché dura self._cache_ttl segundos y evita hacer múltiples
+        requests HTTP cuando se consultan varias fechas seguidas
+        (ej: modo "semana" que llama obtener_partidos_fecha 7 veces).
+        """
+        ahora = datetime.now().timestamp()
+        if self._cache_soup and (ahora - self._cache_timestamp) < self._cache_ttl:
+            logger.debug("Usando caché de la página")
+            return self._cache_soup
+
+        logger.debug("Obteniendo página fresca")
+        response = self.session.get(self.url, impersonate="chrome120", timeout=15)
+        response.raise_for_status()
+        self._cache_soup = BeautifulSoup(response.text, "html.parser")
+        self._cache_timestamp = ahora
+        return self._cache_soup
 
     def obtener_partidos_fecha(self, fecha_es: str) -> List[Partido]:
         """Obtiene partidos para una fecha específica (formato español: '10 de julio').
@@ -255,16 +326,13 @@ class FutbolRedScraper:
         2. Busca todas las tablas <table>
         3. Para cada tabla, la primera fila tiene la fecha
         4. Si la fecha coincide con la buscada, extrae los partidos
+
+        Usa caché interno para no repetir la request en consultas consecutivas.
         """
         try:
             logger.info(f"Obteniendo partidos para: {fecha_es}")
 
-            # curl_cffi con impersonate='chrome120' para imitar TLS de Chrome 120
-            # y evitar el bloqueo de Akamai CDN
-            response = self.session.get(self.url, impersonate="chrome120", timeout=15)
-            response.raise_for_status()
-
-            soup = BeautifulSoup(response.text, "html.parser")
+            soup = self._obtener_soup()
             tablas = soup.find_all("table")
             partidos = []
 
@@ -368,6 +436,23 @@ class FutbolRedScraper:
         return self.obtener_partidos_fecha(fecha_manana)
 
 
+def _filtrar_partidos_por_fecha(
+    partidos: List[Partido], fecha_es: str
+) -> List[Partido]:
+    """Filtra una lista de Partido por fecha en español."""
+    fecha_buscada_lower = fecha_es.lower()
+    filtrados = []
+    for p in partidos:
+        if p.fecha and p.fecha.lower() == fecha_buscada_lower:
+            filtrados.append(p)
+        elif not p.fecha:
+            fecha_parseada = DateUtils.parse_fecha_partidos_de_hoy(p.hora)
+            if fecha_parseada and fecha_parseada.lower() == fecha_buscada_lower:
+                p.fecha = fecha_es
+                filtrados.append(p)
+    return filtrados
+
+
 class PartidosDeHoyScrapper:
     """Scraper para partidos-de-hoy.co
 
@@ -380,17 +465,16 @@ class PartidosDeHoyScrapper:
         <div class="scf-match-canal"><img alt="DSports"/></div>
         ...
 
-    NOTA: El sitio carga los tabs dinámicamente (JS), por lo que
-    generalmente solo se ve el día actual. Los métodos para 'mañana'
-    y fechas específicas intentarán parsear el contenido disponible,
-    pero pueden devolver listas vacías si la pestaña no está cargada en HTML.
+    NOTA: El sitio carga los tabs dinámicamente (JS) en la portada, por lo que
+    generalmente solo se ve el día actual. La página /calendario-de-partidos-en-colombia/
+    tiene todas las fechas en HTML (hasta ~6 días).
     """
 
     URL = "https://partidos-de-hoy.co"
+    CALENDAR_URL = "https://partidos-de-hoy.co/calendario-de-partidos-en-colombia/"
 
     def __init__(self):
         self.date_utils = DateUtils()
-        # Requests normal funciona aquí (no tiene protección CDN agresiva)
         self.session = requests.Session()
         self.session.headers.update(
             {
@@ -402,145 +486,144 @@ class PartidosDeHoyScrapper:
                 "Accept-Language": "es-ES,es;q=0.9",
             }
         )
+        # Caché por URL
+        self._cache: dict = {}
+        self._cache_ttl = 30
 
     def obtener_partidos_hoy(self) -> List[Partido]:
-        """Obtiene partidos de hoy desde partidos-de-hoy.co
-
-        Scrapea todas las ligas y partidos visibles en la página.
-        Como el sitio carga por JS, esto generalmente devuelve solo
-        los partidos del día actual.
-        """
+        """Obtiene partidos de hoy desde partidos-de-hoy.co"""
         return self._obtener_partidos()
 
     def obtener_partidos_manana(self) -> List[Partido]:
-        """Obtiene partidos de mañana.
-
-        Intenta parsear todos los tabs disponibles y filtrar por
-        la fecha de mañana. Si el tab no está cargado en HTML,
-        devuelve lista vacía.
-        """
+        """Obtiene partidos de mañana."""
         fecha_manana = DateUtils.get_manana()
         return self.obtener_partidos_fecha(fecha_manana)
 
     def obtener_partidos_fecha(self, fecha_es: str) -> List[Partido]:
         """Obtiene partidos para una fecha específica en español.
 
-        Scrapea todos los partidos visibles y filtra aquellos
-        cuya fecha coincida con la buscada.
+        Scrapea la portada primero; si no encuentra partidos para la
+        fecha buscada, intenta con el calendario.
         """
+        # 1) Intentar portada (hoy)
         partidos = self._obtener_partidos()
-        if not partidos:
-            return []
+        filtrados = _filtrar_partidos_por_fecha(partidos, fecha_es)
+        if filtrados:
+            return filtrados
 
-        # Si los partidos ya tienen fecha asignada, filtrar
-        # O intentar extraer fecha del texto
-        fecha_buscada_lower = fecha_es.lower()
-        fecha_buscada_dia = (
-            fecha_es.split(" de ")[0] if " de " in fecha_es else fecha_es
-        )
+        # 2) Fallback: calendario (varios días)
+        logger.debug("Portada sin datos para %s, consultando calendario...", fecha_es)
+        calendario = self._obtener_partidos_calendario()
+        return calendario.get(fecha_es, [])
 
-        filtrados = []
-        for p in partidos:
-            # Si el partido ya tiene fecha y coincide, incluirlo
-            if p.fecha and p.fecha.lower() == fecha_buscada_lower:
-                filtrados.append(p)
-            # Si no tiene fecha pero el texto del partido coincide
-            elif not p.fecha:
-                # Intentar parsear fecha del texto del equipo/hora
-                fecha_parseada = DateUtils.parse_fecha_partidos_de_hoy(p.hora)
-                if fecha_parseada and fecha_parseada.lower() == fecha_buscada_lower:
-                    p.fecha = fecha_es
-                    filtrados.append(p)
+    def _obtener_soup(self, url: str) -> BeautifulSoup | None:
+        """Retorna el soup de una URL, usando caché por URL si está vigente."""
+        ahora = datetime.now().timestamp()
+        cached = self._cache.get(url)
+        if cached and (ahora - cached[1]) < self._cache_ttl:
+            logger.debug("PartidosDeHoy: usando caché para %s", url)
+            return cached[0]
 
-        return filtrados
+        logger.debug("PartidosDeHoy: página fresca %s", url)
+        try:
+            response = self.session.get(url, timeout=15)
+            response.raise_for_status()
+        except requests.RequestException as e:
+            logger.error("Error de conexión con %s: %s", url, e)
+            return None
+
+        soup = BeautifulSoup(response.text, "html.parser")
+        self._cache[url] = (soup, ahora)
+        return soup
+
+    @staticmethod
+    def _parsear_partidos(
+        soup: BeautifulSoup, *, fecha_default: str | None = None
+    ) -> List[Partido]:
+        """Extrae partidos desde un soup que contiene .scf-league-group."""
+        partidos: List[Partido] = []
+        league_groups = soup.select(".scf-league-group")
+
+        for league in league_groups:
+            liga = league.find("h2")
+            liga_nombre = liga.get_text(strip=True) if liga else "Fútbol"
+
+            match_links = league.select(".scf-match-list li a.scf-match-item")
+
+            for match in match_links:
+                home_team_el = match.select_one(".team-row.home .team-name")
+                away_team_el = match.select_one(".team-row.away .team-name")
+                if not home_team_el or not away_team_el:
+                    continue
+
+                home_team = home_team_el.get_text(strip=True)
+                away_team = away_team_el.get_text(strip=True)
+                equipos = f"{home_team} VS {away_team}"
+
+                # Hora (de "10 Jul 2026, 14:00" -> "14:00")
+                when_el = match.select_one(".scf-match-when")
+                hora = "Por confirmar"
+                if when_el:
+                    raw = when_el.get_text(strip=True)
+                    if ", " in raw:
+                        hora = raw.split(", ")[-1]
+                    else:
+                        hora = raw
+
+                # Canal (imagen alt)
+                canal_img = match.select_one(".scf-match-canal img")
+                canal = (
+                    canal_img["alt"]
+                    if canal_img and canal_img.has_attr("alt")
+                    else "Por confirmar"
+                )
+
+                partidos.append(
+                    Partido(
+                        equipos=equipos,
+                        liga=liga_nombre,
+                        hora=hora,
+                        canal=canal,
+                        fecha=fecha_default,
+                    )
+                )
+
+        return partidos
 
     def _obtener_partidos(self) -> List[Partido]:
-        """Método interno que scrapea todos los partidos visibles en la página.
-
-        Busca:
-        - .scf-league-group:    Agrupaciones por liga
-        - .scf-match-item:      Cada partido individual
-        - .team-name:           Nombres de equipos
-        - .scf-match-canal img: Canal en atributo 'alt'
-        """
-        try:
-            response = self.session.get(self.URL, timeout=15)
-            response.raise_for_status()
-
-            soup = BeautifulSoup(response.text, "html.parser")
-            partidos = []
-
-            # Detectar la fecha activa en los tabs (si existe)
-            tab_activo = soup.select_one('.scf-tab[aria-selected="true"]')
-            fecha_tab = tab_activo.get_text(strip=True) if tab_activo else None
-            fecha_es_tab = (
-                DateUtils.parse_fecha_partidos_de_hoy(fecha_tab) if fecha_tab else None
-            )
-
-            league_groups = soup.select(".scf-league-group")
-
-            for league in league_groups:
-                liga = league.find("h2")
-                liga_nombre = liga.get_text(strip=True) if liga else "Fútbol"
-
-                match_links = league.select(".scf-match-list li a.scf-match-item")
-
-                for match in match_links:
-                    texto = match.get_text(" ", strip=True)
-
-                    if "VS" not in texto:
-                        continue
-
-                    # Hora
-                    hora = "Por confirmar"
-                    for token in texto.split():
-                        if ":" in token:
-                            hora = token
-                            break
-
-                    # Equipos
-                    home_team_el = match.select_one(".team-row.home .team-name")
-                    away_team_el = match.select_one(".team-row.away .team-name")
-
-                    home_team = (
-                        home_team_el.get_text(strip=True)
-                        if home_team_el
-                        else "Por confirmar"
-                    )
-                    away_team = (
-                        away_team_el.get_text(strip=True)
-                        if away_team_el
-                        else "Por confirmar"
-                    )
-
-                    equipos = f"{home_team} VS {away_team}"
-
-                    # Canal (imagen alt)
-                    canal_img = match.select_one(".scf-match-canal img")
-                    canal = (
-                        canal_img["alt"]
-                        if canal_img and canal_img.has_attr("alt")
-                        else "Por confirmar"
-                    )
-
-                    partidos.append(
-                        Partido(
-                            equipos=equipos,
-                            liga=liga_nombre,
-                            hora=hora,
-                            canal=canal,
-                            fecha=fecha_es_tab,  # Asignar fecha del tab si existe
-                        )
-                    )
-
-            return partidos
-
-        except requests.RequestException as e:
-            logger.error(f"Error de conexión con partidos-de-hoy.co: {e}")
+        """Scrapea la portada (día actual)."""
+        soup = self._obtener_soup(self.URL)
+        if soup is None:
             return []
-        except Exception as e:
-            logger.error(f"Error inesperado en PartidosDeHoyScrapper: {e}")
-            return []
+
+        tab_activo = soup.select_one('.scf-tab[aria-selected="true"]')
+        fecha_tab = tab_activo.get_text(strip=True) if tab_activo else None
+        fecha_es_tab = (
+            DateUtils.parse_fecha_partidos_de_hoy(fecha_tab) if fecha_tab else None
+        )
+
+        return self._parsear_partidos(soup, fecha_default=fecha_es_tab)
+
+    def _obtener_partidos_calendario(self) -> Dict[str, List[Partido]]:
+        """Scrapea /calendario/ y retorna dict {fecha_es: [Partido]} por cada tab."""
+        soup = self._obtener_soup(self.CALENDAR_URL)
+        if soup is None:
+            return {}
+
+        tabs = soup.select(".scf-tab")
+        panels = soup.select(".scf-tabpanel")
+        resultado: Dict[str, List[Partido]] = {}
+
+        for tab, panel in zip(tabs, panels):
+            fecha_tab = tab.get_text(strip=True)
+            fecha_es = DateUtils.parse_fecha_partidos_de_hoy(fecha_tab)
+            if not fecha_es:
+                continue
+            partidos = self._parsear_partidos(panel, fecha_default=fecha_es)
+            if partidos:
+                resultado[fecha_es] = partidos
+
+        return resultado
 
 
 class DataFormatter:
@@ -552,7 +635,10 @@ class DataFormatter:
 
     @staticmethod
     def format_partidos(
-        partidos: List[Partido], fecha: str, titulo_personalizado: str = None
+        partidos: List[Partido],
+        fecha: str,
+        titulo_personalizado: str = None,
+        fuente: str = None,
     ) -> str:
         """Formatea lista de partidos para envío por Telegram con el estilo visual mejorado"""
         if titulo_personalizado:
@@ -560,8 +646,10 @@ class DataFormatter:
         else:
             encabezado = f"📅 *Partidos del {fecha}*"
 
+        pie_fuente = f"\n📡 _Fuente: {fuente}_" if fuente else ""
+
         if not partidos:
-            return f"{encabezado}\n\n❌ No se encontraron partidos para esta fecha.\n\n🔄 _Actualizado: {datetime.now().strftime('%H:%M')}h_"
+            return f"{encabezado}\n\n❌ No se encontraron partidos para esta fecha.\n\n🔄 _Actualizado: {datetime.now().strftime('%H:%M')}h_{pie_fuente}"
 
         mensaje = f"{encabezado}\n\n"
 
@@ -569,16 +657,21 @@ class DataFormatter:
         for partido in partidos:
             mensaje += partido.to_markdown() + "\n"
 
-        # Agregar total al final
-        mensaje += f"📊 Total: {len(partidos)} partidos encontrados"
+        # Agregar total y fuente al final
+        mensaje += f"📊 Total: {len(partidos)} partidos encontrados{pie_fuente}"
 
         return mensaje
 
     @staticmethod
-    def format_resumen_semanal(partidos_por_fecha: Dict[str, List[Partido]]) -> str:
+    def format_resumen_semanal(
+        partidos_por_fecha: Dict[str, List[Partido]],
+        fuente: str = None,
+    ) -> str:
         """Formatea resumen semanal de partidos con el estilo visual mejorado"""
+        pie_fuente = f"\n📡 _Fuente: {fuente}_" if fuente else ""
+
         if not partidos_por_fecha:
-            return "📅 *Partidos de la Semana*\n\n❌ No se encontraron partidos para esta semana."
+            return f"📅 *Partidos de la Semana*\n\n❌ No se encontraron partidos para esta semana.{pie_fuente}"
 
         mensaje = "📅 *Partidos de la Semana*\n\n"
 
@@ -606,14 +699,16 @@ class DataFormatter:
                 # Agregar total de partidos del día
                 mensaje += f"📊 Total: {len(partidos)} partidos encontrados\n\n"
 
-        return mensaje.rstrip()  # Quitar salto de línea final extra
+        mensaje = mensaje.rstrip()  # Quitar salto de línea final extra
+        mensaje += pie_fuente
+        return mensaje
 
 
 # === FACTORY DE SCRAPERS ===
 
 
 def get_scraper(source: str = None):
-    """Factory: retorna una instancia del scraper según la fuente indicada.
+    """Factory: retorna una tupla (scraper, nombre_fuente) según la fuente indicada.
 
     Orden de precedencia para determinar la fuente:
     1. Parámetro explícito `source`
@@ -625,7 +720,7 @@ def get_scraper(source: str = None):
     - 'partidos-de-hoy': Scraper de partidos-de-hoy.co (más estable)
 
     Uso:
-        scraper = get_scraper('futbolred')
+        scraper, fuente = get_scraper('futbolred')
         partidos_hoy = scraper.obtener_partidos_hoy()
     """
     if source is None:
@@ -637,11 +732,11 @@ def get_scraper(source: str = None):
 
     if source == "futbolred":
         logger.info("Usando scraper: futbolred.com (curl_cffi para Akamai)")
-        return FutbolRedScraper()
+        return FutbolRedScraper(), "futbolred.com"
 
     elif source in ("partidos_de_hoy", "partidos-de-hoy"):
         logger.info("Usando scraper: partidos-de-hoy.co")
-        return PartidosDeHoyScrapper()
+        return PartidosDeHoyScrapper(), "partidos-de-hoy.co"
 
     else:
         logger.error(f"Fuente no válida: '{source}'. Opciones: {SCRAPER_SOURCES}")
@@ -672,8 +767,8 @@ def obtener_partidos(tipo: str = "hoy", source: str = None) -> str:
     formatter = DataFormatter()
 
     try:
-        # Obtener el scraper según la fuente seleccionada
-        scraper = get_scraper(source)
+        # Obtener el scraper y el nombre de la fuente
+        scraper, nombre_fuente = get_scraper(source)
 
     except ValueError as e:
         logger.error(f"Error de configuración de scraper: {e}")
@@ -684,13 +779,17 @@ def obtener_partidos(tipo: str = "hoy", source: str = None) -> str:
             partidos = scraper.obtener_partidos_hoy()
             fecha = DateUtils.get_hoy()
             titulo = f"📺 *Partidos de Hoy ({fecha})*"
-            return formatter.format_partidos(partidos, fecha, titulo)
+            return formatter.format_partidos(
+                partidos, fecha, titulo, fuente=nombre_fuente
+            )
 
         elif tipo == "manana":
             fecha = DateUtils.get_manana()
             partidos = scraper.obtener_partidos_manana()
             titulo = f"📺 *Partidos de Mañana ({fecha})*"
-            return formatter.format_partidos(partidos, fecha, titulo)
+            return formatter.format_partidos(
+                partidos, fecha, titulo, fuente=nombre_fuente
+            )
 
         elif tipo == "semana":
             partidos_semana = {}
@@ -701,7 +800,9 @@ def obtener_partidos(tipo: str = "hoy", source: str = None) -> str:
                 if partidos:
                     partidos_semana[fecha_str] = partidos
 
-            return formatter.format_resumen_semanal(partidos_semana)
+            return formatter.format_resumen_semanal(
+                partidos_semana, fuente=nombre_fuente
+            )
 
         else:
             return "❌ Tipo de consulta no válido. Usa: 'hoy', 'manana' o 'semana'"

@@ -1,159 +1,138 @@
-# ParrillaFutbolBot
+# Documentacion Tecnica - ParrillaFutbolBot
 
-Esta documentacion complementa al `README.md` principal y describe el estado real del proyecto hoy.
+Complemento tecnico al `README.md` principal del proyecto.
 
-## Resumen Tecnico
+## Arquitectura
 
-El repositorio contiene dos entradas principales:
+### Componentes
 
-- `src/bot_local.py`: bot interactivo por `polling`
-- `src/bot_parrilla.py`: script de envio puntual a Telegram
-
-No existe hoy un tercer entrypoint funcional para produccion como `src/main.py`.
-
-## Flujo Actual Del Bot Interactivo
-
-Archivo: `src/bot_local.py`
-
-1. Carga variables desde `config/.env`
-2. Lee `BOT_TOKEN`
-3. Levanta una aplicacion de `python-telegram-bot`
-4. Registra handlers para comandos, botones y texto libre
-5. Cuando recibe una consulta, hace scraping a `https://www.futbolred.com/parrilla-de-futbol`
-6. Formatea la respuesta y la envia al chat
-
-Comandos registrados hoy:
-
-- `/start`
-- `/partidos`
-- `/hoy`
-- `/manana`
-- `/semana`
-- `/status`
-- `/help`
-
-## Flujo Actual Del Script De Envio
-
-Archivo: `src/bot_parrilla.py`
-
-1. Carga variables desde `config/.env`
-2. Lee `BOT_TOKEN` y `CHAT_ID`
-3. Interpreta argumentos por linea de comandos
-4. Obtiene partidos
-5. Formatea el mensaje
-6. Lo envia por Telegram o lo imprime en consola si esta en modo `test`
-
-Comandos implementados hoy:
-
-```bash
-python bot_parrilla.py hoy
-python bot_parrilla.py manana
-python bot_parrilla.py semana
-python bot_parrilla.py todo
-python bot_parrilla.py test hoy
-python bot_parrilla.py test manana
-python bot_parrilla.py test semana
+```
+bot_parrilla.py (logica central)
+    |-- FutbolRedScraper       # curl_cffi + BeautifulSoup
+    |-- PartidosDeHoyScrapper  # requests + BeautifulSoup
+    |-- get_scraper()          # Factory segun fuente/config
+    |-- DateUtils              # Formateo y parseo de fechas
+    |-- Partido                # Modelo de datos
+    |-- DataFormatter          # Formateo a Markdown para Telegram
+    |
+    v
+bot_local.py (hereda de bot_parrilla.py)
+    |-- Importa get_scraper, DateUtils, DataFormatter, setup_logging
+    |-- user_sources: Dict[int, str]  (fuente preferida por chat en memoria)
+    |-- Application polling de python-telegram-bot
+    |-- Handlers: comandos, botones inline, texto libre
+    |-- Menu interactivo multi-paso: /start -> seleccion fuente -> menu principal
 ```
 
-## Fuentes De Datos
+### Flujo de scraping (ambos scripts)
 
-El proyecto no tiene una sola estrategia de scraping hoy.
-
-### En `bot_local.py`
-
-- origen: `https://www.futbolred.com/parrilla-de-futbol`
-- parser: `requests` + `BeautifulSoup`
-- criterio: busca tablas HTML y compara la fecha
-
-### En `bot_parrilla.py`
-
-- para `hoy`: usa `PartidosDeHoyScrapper` con `https://partidos-de-hoy.co`
-- tambien existe `FutbolRedScraper`, pero no esta usado de forma consistente por todos los comandos
-
-## Ejecucion Local Real
-
-### Requisitos
-
-- Python 3.8 o superior
-- `BOT_TOKEN`
-- `CHAT_ID` si se usa el modo de envio automatico
-
-### Instalacion
-
-Desde la raiz del proyecto:
-
-```bash
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
+```
+1. get_scraper(source)  ->  FutbolRedScraper | PartidosDeHoyScrapper
+2. scraper.obtener_partidos_hoy() | .obtener_partidos_manana() | .obtener_partidos_fecha()
+3. DataFormatter.format_partidos()  ->  string en Markdown
+4. Envio a Telegram (Bot.send_message) o impresion en consola (modo test)
 ```
 
-Crear `src/config/.env`:
+### Seleccion de fuente
 
-```env
-BOT_TOKEN=tu_bot_token_aqui
-CHAT_ID=tu_chat_id_aqui
-WEBHOOK_URL=https://tu-dominio.com
-FLASK_PORT=10000
-DEBUG=False
-LOG_LEVEL=INFO
-```
-
-### Por que hay que ejecutar desde `src`
-
-Ambos scripts usan esta ruta relativa:
+La funcion `get_scraper(source=None)` en `bot_parrilla.py` determina el scraper asi:
 
 ```python
-load_dotenv('config/.env')
+def get_scraper(source=None):
+    if source is None:
+        source = os.getenv('SCRAPER_SOURCE', 'partidos-de-hoy')
+    # 'futbolred' -> FutbolRedScraper()
+    # 'partidos-de-hoy' -> PartidosDeHoyScrapper()
 ```
 
-Por eso, hoy la forma correcta de ejecutarlos es entrando antes a `src`.
+## Scrapers
 
-### Modo recomendado hoy
+### FutbolRedScraper
+
+- **URL**: `https://www.futbolred.com/parrilla-de-futbol`
+- **Proteccion**: Akamai CDN (edgesuite.net) - bloquea `requests` normal con HTTP 403
+- **Solucion**: `curl_cffi` con `impersonate='chrome120'` para imitar el fingerprint TLS de Chrome
+- **Estructura HTML**:
+  ```html
+  <table>
+    <tr><th class="partido">Viernes 10 de Julio</th><th>LIGA</th><th>HORA</th><th>CANAL</th></tr>
+    <tr><td>Equipo A-Equipo B</td><td>Liga</td><td>Hora</td><td>Canal</td></tr>
+  </table>
+  ```
+- Soporta multiples fechas: la pagina tiene una tabla por dia (tipicamente hoy y manana)
+
+### PartidosDeHoyScrapper
+
+- **URL principal**: `https://partidos-de-hoy.co`
+- **URL calendario**: `https://partidos-de-hoy.co/calendario-de-partidos-en-colombia/` (fallback para fechas futuras)
+- **Proteccion**: Sin CDN agresivo, funciona con `requests` normal
+- **Estructura HTML**: WordPress con tabs `.scf-tab` y listas `.scf-match-list`
+- La portada solo muestra el tab del dia actual en HTML (los demas se cargan via JS). El metodo `obtener_partidos_fecha()` consulta primero la portada y, si no encuentra datos para la fecha solicitada, hace fallback al calendario donde **si** estan todas las pestañas renderizadas en HTML (tipicamente 6-7 dias).
+- **Parseo del calendario**: itera sobre pares `.scf-tab` / `.scf-tabpanel`, extrae la fecha de cada tab y asigna los partidos de su panel correspondiente.
+- Soporta `obtener_partidos_manana()` y `obtener_partidos_fecha()` para fechas dentro del rango del calendario.
+
+## Comandos CLI (bot_parrilla.py)
 
 ```bash
-cd src
-python bot_local.py
+# Envio a Telegram
+python bot_parrilla.py hoy                   # Partidos de hoy
+python bot_parrilla.py manana                # Partidos de manana
+python bot_parrilla.py semana                # Resumen semanal
+python bot_parrilla.py todo                  # Hoy + manana
+
+# Prueba en consola (sin enviar a Telegram)
+python bot_parrilla.py test                  # Test hoy (default)
+python bot_parrilla.py test manana           # Test manana
+python bot_parrilla.py test semana           # Test semana
+
+# Seleccion de fuente (con cualquier comando)
+python bot_parrilla.py test --source futbolred
+python bot_parrilla.py hoy --source partidos-de-hoy
 ```
 
-### Modo script
+## Dependencias
 
-```bash
-cd src
-python bot_parrilla.py hoy
+### Directas (src/config/requirements.txt)
+
+```text
+requests            # HTTP para partidos-de-hoy.co
+beautifulsoup4      # Parseo HTML
+python-telegram-bot # API de Telegram
+python-dotenv       # Variables de entorno desde .env
+curl_cffi           # HTTP con fingerprint TLS (Akamai bypass)
 ```
 
-### Modo prueba
+### Transitivas principales
 
-```bash
-cd src
-python bot_parrilla.py test hoy
-```
+- `requests` -> `urllib3`, `charset-normalizer`, `idna`, `certifi`
+- `beautifulsoup4` -> `soupsieve`
+- `python-telegram-bot` -> `httpx` -> `httpcore`, `h11`, `anyio`, `sniffio`, `certifi`, `idna`
+- `curl_cffi` -> `cffi` -> `pycparser`, `certifi`, `rich` -> `markdown-it-py` -> `mdurl`, `pygments`, `typing-extensions`
 
-## Limitaciones Conocidas
+## Banderas de paises
 
-1. La documentacion historica hablaba de Render y de un flujo de produccion mas estable de lo que hoy refleja el codigo.
+`config/emoji_ligas.py` contiene el diccionario `BANDERAS` que mapea nombres de paises
+(en espanol e ingles) a sus banderas emoji. El metodo `Partido._agregar_banderas()`
+parsea los nombres de los equipos (formato "Espana-Belgica" o "Spain VS Belgium"),
+normaliza acentos y busca cada equipo en el diccionario. Si encuentra ambos,
+muestra: `:flag_es:Espana  vs  :flag_be:Belgica`.
 
-2. `src/main.py` no existe.
-
-3. `src/bot_parrilla.py` tiene una inconsistencia funcional:
-   el modo `hoy` crea `PartidosDeHoyScrapper()`, pero `manana` y `semana` usan una variable `scraper` que no se inicializa en ese flujo. Esos comandos pueden fallar.
-
-4. Los archivos `tests/run_bot_local.bat`, `tests/run_bot_parrilla.bat` y `tests/run_bot_parrilla_with_test_hoy.bat` parecen desactualizados respecto a las rutas actuales.
-
-5. El proyecto mantiene dependencias duplicadas en `requirements.txt` y `src/config/requirements.txt`.
+El diccionario incluye mas de 80 paises con sus variantes idiomaticas.
 
 ## Logs
 
-`src/bot_parrilla.py` intenta crear la carpeta `logs/` y escribir `logs/bot_parrilla.log` ademas de registrar por consola.
+`src/bot_parrilla.py` configura logging asi:
 
-## Recomendacion Practica
+- Consola: siempre activo
+- Archivo: `logs/bot_parrilla.log` (crea la carpeta `logs/` si no existe)
+- Nivel: `INFO` por defecto (configurable via `LOG_LEVEL` en `.env`)
+- Formato: `%(asctime)s - %(name)s - %(levelname)s - %(message)s`
 
-Si quieres usar el proyecto tal como esta hoy:
+## Notas tecnicas
 
-1. configura `src/config/.env`
-2. instala dependencias desde la raiz
-3. entra a `src`
-4. ejecuta `python bot_local.py`
-
-Ese es el flujo mas consistente y menos propenso a fallar en el estado actual del repositorio.
+- `bot_local.py` importa `get_scraper`, `DateUtils`, `DataFormatter` y `setup_logging` desde `bot_parrilla.py`. No duplica logica de scraping.
+- La fuente se guarda por chat en memoria (`user_sources: Dict[int, str]`). Se pierde al reiniciar el bot.
+- `bot_parrilla.py` expone `_filtrar_partidos_por_fecha()` como funcion de modulo para filtrar partidos por fecha en espanol.
+- Los scripts `.bat` en `tests/` pueden estar desactualizados respecto a las rutas actuales.
+- `src/main.py` no existe en el repositorio. Era parte de un flujo de produccion anterior con Flask que ya no se mantiene.
+- Para cambiar la fuente en el bot interactivo, usa `/source` o la opcion "Cambiar Fuente" del menu.
