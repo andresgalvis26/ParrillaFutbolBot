@@ -27,7 +27,7 @@ import os
 import sys
 from dotenv import load_dotenv
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 from config.emoji_ligas import EMOJI_LIGAS, BANDERAS
 
 # curl_cffi: librería que imita el fingerprint TLS de Chrome para evitar
