@@ -18,23 +18,21 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 COL_TZ = timezone(timedelta(hours=-5))
 
 WIDTH = 1080
-PADDING = 56
-CARD_HEIGHT = 154
-CARD_GAP = 16
-HEADER_HEIGHT = 238
-FOOTER_HEIGHT = 80
+PADDING = 48
+CARD_HEIGHT = 192
+CARD_GAP = 18
+HEADER_HEIGHT = 330
+FOOTER_HEIGHT = 86
 MAX_PARTIDOS_POR_IMAGEN = 8
 
-BG_TOP = (8, 13, 24)
-BG_BOTTOM = (15, 23, 42)
-CARD_BG = (20, 28, 46)
-CARD_BORDER = (38, 52, 78)
+BG_TOP = (10, 21, 26)
+BG_BOTTOM = (7, 13, 20)
+CARD_BG = (18, 30, 38)
+CARD_BORDER = (37, 53, 62)
 WHITE = (248, 250, 252)
 GRAY = (148, 163, 184)
-ACCENT = (34, 211, 238)
-AMBER = (251, 191, 36)
-CHIP_BG = (30, 41, 59)
-CHIP_BORDER = (51, 65, 85)
+ACCENT = (193, 249, 95)
+AMBER = (193, 249, 95)
 
 LEAGUE_COLORS = [
     (56, 189, 248),
@@ -169,11 +167,11 @@ def _background(height: int) -> Image.Image:
     glow_draw = ImageDraw.Draw(glow)
     glow_draw.ellipse(
         [WIDTH - 420, -260, WIDTH + 220, 360],
-        fill=(34, 211, 238, 34),
+        fill=(118, 190, 86, 35),
     )
     glow_draw.ellipse(
         [-260, height - 300, 320, height + 160],
-        fill=(167, 139, 250, 28),
+        fill=(51, 141, 165, 22),
     )
     glow = glow.filter(ImageFilter.GaussianBlur(110))
 
@@ -188,46 +186,28 @@ def _draw_header(
     page: int,
     total_pages: int,
 ) -> None:
-    draw.rectangle([0, 0, WIDTH, 8], fill=ACCENT)
+    # Geometría de campo: decoración discreta, sin recursos externos.
+    field = (38, 57, 58)
+    draw.rounded_rectangle([755, 90, 1170, 260], radius=20, outline=field, width=2)
+    draw.line([(962, 90), (962, 260)], fill=field, width=2)
+    draw.ellipse([907, 120, 1017, 230], outline=field, width=2)
+    draw.ellipse([957, 170, 967, 180], fill=field)
 
-    draw.text((PADDING, 40), "PARRILLA DE FÚTBOL", font=_load_font(22, True), fill=ACCENT)
-    draw.text((PADDING, 74), titulo.upper(), font=_load_font(50, True), fill=WHITE)
-    draw.text((PADDING, 146), fecha.upper(), font=_load_font(28), fill=GRAY)
+    draw.rounded_rectangle([PADDING, 42, PADDING + 42, 84], radius=12, fill=ACCENT)
+    draw.ellipse([PADDING + 10, 52, PADDING + 32, 74], outline=BG_TOP, width=2)
+    draw.line([(PADDING + 21, 53), (PADDING + 21, 73)], fill=BG_TOP, width=2)
+    draw.text((PADDING + 58, 63), "FÚTBOL / AGENDA TV", font=_load_font(20, True), fill=ACCENT, anchor="lm")
 
-    chip_font = _load_font(18, True)
-    chip_text = (fuente or "").upper()
-    chip_width = _text_width(draw, chip_text, chip_font) + 34
-    chip_left = WIDTH - PADDING - chip_width
-    chip_top = 52
-    draw.rounded_rectangle(
-        [chip_left, chip_top, WIDTH - PADDING, chip_top + 40],
-        radius=20,
-        fill=CHIP_BG,
-        outline=CHIP_BORDER,
-        width=1,
-    )
-    draw.text(
-        (chip_left + 17, chip_top + 11),
-        chip_text,
-        font=chip_font,
-        fill=GRAY,
-    )
+    page_text = f"EDICIÓN  {page:02d} / {total_pages:02d}"
+    draw.text((WIDTH - PADDING, 63), page_text, font=_load_font(18, True), fill=GRAY, anchor="rm")
+    title_font, title = _fit_font(draw, titulo.upper(), WIDTH - 2 * PADDING, [62, 56, 50, 44, 36], True)
+    draw.text((PADDING, 140), title, font=title_font, fill=WHITE, anchor="lm")
+    draw.text((PADDING, 204), fecha.upper(), font=_load_font(28), fill=WHITE, anchor="lm")
 
-    if total_pages > 1:
-        page_text = f"{page}/{total_pages}"
-        page_font = _load_font(20, True)
-        draw.text(
-            (WIDTH - PADDING - _text_width(draw, page_text, page_font), 104),
-            page_text,
-            font=page_font,
-            fill=ACCENT,
-        )
-
-    draw.line(
-        [(PADDING, HEADER_HEIGHT - 24), (WIDTH - PADDING, HEADER_HEIGHT - 24)],
-        fill=(30, 41, 59),
-        width=2,
-    )
+    draw.line([(PADDING, 251), (WIDTH - PADDING, 251)], fill=CARD_BORDER, width=2)
+    draw.rounded_rectangle([PADDING, 250, PADDING + 80, 253], radius=1, fill=ACCENT)
+    draw.text((PADDING, 284), "LA JORNADA, DE UN VISTAZO", font=_load_font(17, True), fill=GRAY, anchor="lm")
+    draw.text((WIDTH - PADDING, 284), "HORARIO COLOMBIA · UTC−5", font=_load_font(17, True), fill=ACCENT, anchor="rm")
 
 
 def _draw_empty_state(draw: ImageDraw.ImageDraw, top: int) -> None:
@@ -258,9 +238,11 @@ def _draw_match(
     bottom = top + CARD_HEIGHT
     card_width = right - left
 
+    # Sombra dura sutil y borde superior para separar las superficies.
+    draw.rounded_rectangle([left, top + 5, right, bottom + 5], radius=22, fill=(5, 10, 15))
     draw.rounded_rectangle(
         [left, top, right, bottom],
-        radius=18,
+        radius=22,
         fill=CARD_BG,
         outline=CARD_BORDER,
         width=1,
@@ -268,49 +250,46 @@ def _draw_match(
 
     league = (getattr(partido, "liga", "") or "FUTBOL").strip()
     league_color = _league_color(league)
-    draw.rounded_rectangle(
-        [left, top + 14, left + 8, bottom - 14],
-        radius=4,
-        fill=league_color,
-    )
-
-    league_font = _load_font(21, True)
+    draw.ellipse([left + 25, top + 24, left + 33, top + 32], fill=league_color)
+    league_font = _load_font(17, True)
     draw.text(
-        (left + 32, top + 18),
-        _truncate(draw, league.upper(), league_font, card_width - 64),
+        (left + 44, top + 29),
+        _truncate(draw, league.upper(), league_font, card_width - 325),
         font=league_font,
         fill=league_color,
+        anchor="lm",
     )
 
     hora = (getattr(partido, "hora", "") or "").strip()
-    time_font, hora = _fit_font(draw, hora, 235, [32, 28, 24, 20], bold=True)
-    time_width = _text_width(draw, hora, time_font)
-    time_left = right - 32 - time_width
+    time_font, hora = _fit_font(draw, hora or "Por confirmar", 208, [29, 26, 22, 18], bold=True)
+    time_left = right - 254
+    draw.rounded_rectangle([time_left, top + 20, right - 20, top + 125], radius=17, fill=(30, 46, 40), outline=(53, 76, 48))
+    time_center = (time_left + right - 20) // 2
+    draw.text((time_center, top + 43), "INICIO", font=_load_font(13, True), fill=(151, 173, 147), anchor="mm")
+    draw.text((time_center, top + 84), hora, font=time_font, fill=AMBER, anchor="mm")
 
     local, visitante = _split_teams(getattr(partido, "equipos_original", ""))
-    teams_text = f"{local}  vs  {visitante}" if visitante else local
+    teams_max_width = time_left - (left + 28) - 24
+    # Dos líneas: los nombres largos no compiten con el horario.
+    for team, y in ((local, top + 72), (visitante, top + 112)):
+        if team:
+            team_font, label = _fit_font(draw, team, teams_max_width, [32, 29, 26, 23, 20], True)
+            draw.text((left + 28, y), label, font=team_font, fill=WHITE, anchor="lm")
 
-    teams_max_width = time_left - (left + 32) - 24
-    teams_font, teams_text = _fit_font(
-        draw,
-        teams_text,
-        teams_max_width,
-        [34, 30, 26, 22],
-        bold=True,
-    )
-
-    draw.text((left + 32, top + 54), teams_text, font=teams_font, fill=WHITE)
-    if hora:
-        draw.text((time_left, top + 56), hora, font=time_font, fill=AMBER)
+    draw.line([(left + 24, top + 141), (right - 24, top + 141)], fill=CARD_BORDER, width=1)
 
     canal = (getattr(partido, "canal", "") or "").strip()
     if canal:
-        channel_font = _load_font(20)
+        channel_font = _load_font(18)
+        # Icono TV vectorial: no depende de soporte de emojis.
+        draw.rounded_rectangle([left + 28, top + 155, left + 50, top + 171], radius=3, outline=GRAY, width=2)
+        draw.line([(left + 34, top + 175), (left + 44, top + 175)], fill=GRAY, width=2)
         draw.text(
-            (left + 32, top + 112),
-            _truncate(draw, f"TV  {canal}", channel_font, card_width - 64),
+            (left + 64, top + 164),
+            _truncate(draw, canal, channel_font, card_width - 92),
             font=channel_font,
             fill=GRAY,
+            anchor="lm",
         )
 
 
@@ -342,14 +321,11 @@ def _render_page(
         _draw_empty_state(draw, top)
 
     updated = datetime.now(COL_TZ).strftime("%H:%M")
-    footer = f"Actualizado {updated}  ·  Fuente: {fuente}"
-    footer_font = _load_font(18)
-    draw.text(
-        ((WIDTH - _text_width(draw, footer, footer_font)) // 2, height - 46),
-        footer,
-        font=footer_font,
-        fill=GRAY,
-    )
+    footer_font = _load_font(16)
+    draw.ellipse([PADDING, height - 48, PADDING + 6, height - 42], fill=ACCENT)
+    draw.text((PADDING + 17, height - 45), f"Actualizado {updated} · Colombia", font=footer_font, fill=GRAY, anchor="lm")
+    source_label = _truncate(draw, f"Fuente: {fuente}", footer_font, 480)
+    draw.text((WIDTH - PADDING, height - 45), source_label, font=footer_font, fill=GRAY, anchor="rm")
 
     buffer = BytesIO()
     image.save(buffer, format="PNG", optimize=True)
@@ -364,6 +340,8 @@ def generar_imagenes_partidos(
     max_por_imagen: int = MAX_PARTIDOS_POR_IMAGEN,
 ) -> List[bytes]:
     """Retorna una o varias imagenes PNG, paginando si hay muchos partidos."""
+    if not 1 <= max_por_imagen <= MAX_PARTIDOS_POR_IMAGEN:
+        raise ValueError(f"max_por_imagen debe estar entre 1 y {MAX_PARTIDOS_POR_IMAGEN}")
     ordered = sorted(partidos, key=_time_sort_key) if partidos else []
 
     if ordered:
