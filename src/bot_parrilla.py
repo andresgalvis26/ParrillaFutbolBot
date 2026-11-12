@@ -22,6 +22,7 @@ from telegram import Bot
 import asyncio
 from datetime import datetime, timedelta, timezone
 import os
+import sys
 from dotenv import load_dotenv
 import logging
 from typing import List, Dict, Optional
@@ -46,8 +47,42 @@ DEFAULT_SOURCE = os.getenv("SCRAPER_SOURCE", "partidos-de-hoy")
 # Colombia: UTC-5
 COL_TZ = timezone(timedelta(hours=-5))
 
+# En Windows la consola suele usar cp1252 y falla al imprimir emojis.
+# En GitHub Actions (Linux) ya es UTF-8, pero esto no afecta.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except (AttributeError, ValueError):
+    pass
+
 
 # Configurar logging de manera más robusta
+class _RedactBotToken(logging.Filter):
+    """Reemplaza el token del bot por *** en cualquier mensaje de log."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if BOT_TOKEN:
+            record.msg = str(record.msg).replace(BOT_TOKEN, "***")
+            if record.args:
+                if isinstance(record.args, dict):
+                    record.args = {
+                        k: (
+                            str(v).replace(BOT_TOKEN, "***")
+                            if isinstance(v, str)
+                            else v
+                        )
+                        for k, v in record.args.items()
+                    }
+                else:
+                    record.args = tuple(
+                        str(a).replace(BOT_TOKEN, "***")
+                        if isinstance(a, str)
+                        else a
+                        for a in record.args
+                    )
+        return True
+
+
 def setup_logging():
     """Configura el sistema de logging"""
     # Crear directorio de logs si no existe
@@ -87,6 +122,21 @@ def setup_logging():
 # Inicializar logging
 setup_logging()
 logger = logging.getLogger("ParrillaCronBot")
+
+# Redactar el token en todos los handlers (incluye logs de httpx) y bajar
+# el nivel de httpx para no imprimir la URL con el token en cada request.
+for _handler in logging.getLogger().handlers:
+    _handler.addFilter(_RedactBotToken())
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
+
+def _sanitize(text) -> str:
+    """Evita que el token del bot termine en los logs o en un correo de error."""
+    text = str(text)
+    if BOT_TOKEN:
+        text = text.replace(BOT_TOKEN, "***")
+    return text
 
 # === CLASES Y UTILIDADES MEJORADAS ===
 
@@ -1003,19 +1053,27 @@ async def enviar_mensaje(tipo: str = "hoy", chat_id: str = None, source: str = N
         return True
 
     except Exception as e:
-        logger.error(f"Error enviando mensaje: {e}")
+        logger.error(f"Error enviando mensaje: {_sanitize(e)}")
         return False
 
 
-async def enviar_multiple(tipos: List[str] = None, source: str = None):
-    """Envía múltiples tipos de partidos"""
+async def enviar_multiple(tipos: List[str] = None, source: str = None) -> bool:
+    """Envía múltiples tipos de partidos.
+
+    Retorna True solo si todos los envíos fueron exitosos. Esto permite que
+    GitHub Actions marque la ejecución como fallida si Telegram rechaza algo.
+    """
     if tipos is None:
         tipos = ["hoy"]
 
+    ok = True
     for tipo in tipos:
         logger.info(f"Enviando partidos: {tipo}")
-        await enviar_mensaje(tipo, source=source)
+        if not await enviar_mensaje(tipo, source=source):
+            ok = False
         await asyncio.sleep(2)  # Pausa entre envíos
+
+    return ok
 
 
 # === FUNCIÓN PARA PRUEBAS ===
@@ -1072,8 +1130,6 @@ def parse_cli_args():
 
 # === PUNTO DE ENTRADA PRINCIPAL ===
 if __name__ == "__main__":
-    import sys
-
     comando, tipo_test, source_cli = parse_cli_args()
 
     if comando == "test":
@@ -1082,14 +1138,19 @@ if __name__ == "__main__":
 
     elif comando in ("hoy", "manana", "semana", "todo"):
         if comando == "todo":
-            asyncio.run(enviar_multiple(["hoy", "manana"], source=source_cli))
+            ok = asyncio.run(enviar_multiple(["hoy", "manana"], source=source_cli))
         else:
-            asyncio.run(enviar_mensaje(comando, source=source_cli))
+            ok = asyncio.run(enviar_mensaje(comando, source=source_cli))
+
+        # Código de salida distinto de cero para que GitHub Actions
+        # marque la ejecución como fallida si Telegram no recibió el mensaje.
+        sys.exit(0 if ok else 1)
 
     elif comando is None:
         # Comportamiento por defecto - enviar partidos de hoy
         logger.info("Ejecutando modo por defecto: partidos de hoy")
-        asyncio.run(enviar_mensaje("hoy"))
+        ok = asyncio.run(enviar_mensaje("hoy"))
+        sys.exit(0 if ok else 1)
 
     else:
         print("❌ Comando no reconocido")
@@ -1099,3 +1160,4 @@ if __name__ == "__main__":
         print("  python bot_parrilla.py semana [--source ...]")
         print("  python bot_parrilla.py todo [--source ...]")
         print("  python bot_parrilla.py test [hoy|manana|semana] [--source ...]")
+        sys.exit(2)

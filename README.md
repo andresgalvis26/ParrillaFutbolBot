@@ -30,6 +30,9 @@ La fuente se selecciona en este orden de precedencia:
 
 ```text
 ParrillaFutbolBot/
+|-- .github/
+|   `-- workflows/
+|       `-- parrilla.yml          # Cron diario en GitHub Actions
 |-- assets/
 |-- docs/
 |-- src/
@@ -184,11 +187,32 @@ Las dependencias transitivas (httpx, rich, cffi, soupsieve, etc.) se instalan au
 
 ## Automatizacion
 
-Para ejecuciones programadas (cron / tareas programadas):
+### GitHub Actions (recomendado, $0)
+
+El workflow `.github/workflows/parrilla.yml` ejecuta el bot todos los dias a las **8:00 AM Colombia (13:00 UTC)** y tambien se puede lanzar a mano desde **Actions -> Parrilla Futbol -> Telegram -> Run workflow**.
+
+Configura estos secretos en el repositorio (**Settings -> Secrets and variables -> Actions**):
+
+- `BOT_TOKEN`: token del bot de Telegram.
+- `CHAT_ID`: chat o grupo destino.
+
+El workflow instala `src/config/requirements.txt` y ejecuta:
 
 ```bash
-cd /ruta/al/proyecto/src && python bot_parrilla.py hoy --source futbolred
-cd /ruta/al/proyecto/src && python bot_parrilla.py hoy --source futbolenvivo
+cd src
+python bot_parrilla.py hoy --source futbolred
+```
+
+Desde la ejecucion manual puedes elegir `hoy`, `manana`, `semana` o `todo`, y la fuente (`futbolred`, `partidos-de-hoy` o `futbolenvivo`). Para cambiar la hora del cron, edita la linea `cron` del workflow (GitHub usa UTC; Colombia es UTC-5).
+
+Costo: GitHub Free incluye 2,000 minutos Linux al mes en repos privados. Una corrida diaria consume aproximadamente 1-2 minutos.
+
+### Ejecucion manual / cron local
+
+```bash
+cd src
+python bot_parrilla.py hoy --source futbolred
+python bot_parrilla.py hoy --source futbolenvivo
 ```
 
 En Windows:
@@ -197,6 +221,8 @@ En Windows:
 cd /d D:\ruta\al\proyecto\src && python bot_parrilla.py hoy --source futbolred
 cd /d D:\ruta\al\proyecto\src && python bot_parrilla.py hoy --source futbolenvivo
 ```
+
+El cron diario de Render ya no es necesario: GitHub Actions lo reemplaza sin costo.
 
 ## Zona Horaria
 

@@ -3,19 +3,46 @@
 ## Resumen
 
 Actualmente el bot funciona con:
-- **Render (cron)**: `bot_parrilla.py` via cron job diario a las 8am (gratis)
-- **Uso local**: `bot_local.py` bajo demanda para interactuar
+- **GitHub Actions (cron)**: `bot_parrilla.py` diario a las 8am (Colombia), $0. Reemplaza el cron de Render.
+- **Uso local**: `bot_local.py` bajo demanda para interactuar.
 
 Este documento enumera opciones para tener el bot interactivo 24/7 sin pagar (o muy poco).
 
 ---
 
-## Opcion 1: Oracle Cloud Free Tier (recomendada)
+## Opcion 0: GitHub Actions (recomendada para el envio diario)
+
+**Costo: $0**
+
+El workflow `.github/workflows/parrilla.yml` corre `bot_parrilla.py` en un runner de Ubuntu y termina. No hay servidor que mantener.
+
+### Configuracion
+
+1. En GitHub, entra a **Settings -> Secrets and variables -> Actions**.
+2. Crea los secretos:
+   - `BOT_TOKEN`
+   - `CHAT_ID`
+3. Ve a **Actions -> Parrilla Futbol -> Telegram -> Run workflow** y prueba con `hoy`.
+4. El cron queda automatico a las `0 13 * * *` UTC (8:00 AM Colombia).
+
+### Ventajas
+- Gratis (2,000 minutos Linux/mes en repos privados; una corrida usa ~1-2 min).
+- Sin cold starts, sin servidor, con logs de cada ejecucion.
+- Permite elegir `hoy`, `manana`, `semana` o `todo` y la fuente desde la ejecucion manual.
+
+### Desventajas
+- No mantiene el bot interactivo (`bot_local.py`) encendido 24/7.
+- GitHub puede retrasar el cron unos minutos.
+- Si el repo es publico y pasa 60 dias sin actividad, GitHub puede desactivar el cron (se reactiva con un commit o desde Actions).
+
+---
+
+## Opcion 1: Oracle Cloud Free Tier (recomendada para 24/7)
 
 **Costo: $0**
 
 Oracle Cloud ofrece una VM ARM Ampere A1 siempre gratis:
-- 4 OCPU, 24 GB RAM, 200 GB disco
+- 2 OCPU, 12 GB RAM, 200 GB disco (limite actual de Always Free)
 - Solo requiere crear cuenta y configurar SSH
 
 ### Pasos basicos
@@ -75,25 +102,25 @@ Railway tiene $5 de credito mensual gratis (sin tarjeta en algunos planes). Un b
 
 ---
 
-## Opcion 3: Render (mixto - lo que ya tenes)
+## Opcion 3: Render (alternativa)
 
 **Costo: ~$0-7/mes**
 
-Ya tenes el cron gratis en Render. Agregar un servicio interactivo:
+Render puede seguir usandose, pero el cron diario ya esta cubierto por GitHub Actions. Si quisieras un servicio interactivo:
 
 ### 3a. Background Worker (pago)
 
 Render ofrece Background Workers desde $7/mes. Ahi corre `bot_local.py` 24/7.
 
-### 3b. Solo cron + uso local bajo demanda (sigue siendo gratis)
+### 3b. Solo Render + uso local bajo demanda
 
-Usas Render solo para el cron diario. Cuando queres interactuar:
+Usas Render solo para el cron diario (o lo quitas y usas GitHub Actions). Cuando queres interactuar:
 - Ejecutas `python bot_local.py` en tu PC un rato
 - Lo cerras cuando terminaste
 - El cron sigue mandando el mensaje de las 8am todos los dias
 
 ### Ventajas
-- Ya tenes la infraestructura
+- Ya conoces la infraestructura
 - No mover nada
 
 ### Desventajas
@@ -143,6 +170,7 @@ PythonAnywhere tiene un plan Hacker por $5/mes que permite:
 
 | Opcion | Costo | 24/7 | Dificultad |
 |--------|-------|------|------------|
+| GitHub Actions (cron diario) | $0 | No (solo envia) | Nula |
 | Oracle Cloud Free Tier | $0 | Si | Media |
 | Railway | ~$0-2/mes | Si | Baja |
 | Render Worker (3a) | $7/mes | Si | Baja |
@@ -150,4 +178,4 @@ PythonAnywhere tiene un plan Hacker por $5/mes que permite:
 | Local + tunel | $0 | Depende | Media |
 | PythonAnywhere | $5/mes | Si | Media |
 
-**Para el futuro**: Oracle Cloud Free Tier es la mejor relacion costo/beneficio. Railway es la mas facil. Seguir con solo el cron + local bajo demanda es lo mas practico por ahora.
+**Recomendacion**: usa GitHub Actions para el envio diario (es lo que reemplaza el cron de Render) y Oracle Cloud Free Tier solo si mas adelante quieres el bot interactivo encendido 24/7.

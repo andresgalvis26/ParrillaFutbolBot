@@ -1,8 +1,9 @@
-# Dependencias directas del proyecto
-# Las dependencias transitivas las resuelve pip automáticamente al instalar estas.
+# Dependencias directas del proyecto.
+# Versiones fijadas para que GitHub Actions y local instalen exactamente lo mismo.
+# Las dependencias transitivas las resuelve pip automáticamente.
 
-requests
-beautifulsoup4
-python-telegram-bot
-python-dotenv
-curl_cffi
+requests==2.34.2
+beautifulsoup4==4.15.0
+python-telegram-bot==22.8
+python-dotenv==1.2.2
+curl_cffi==0.15.0
