@@ -3,7 +3,7 @@
 ## Resumen
 
 Actualmente el bot funciona con:
-- **GitHub Actions (cron)**: `bot_parrilla.py` diario a las 8am (Colombia), $0. Reemplaza el cron de Render.
+- **GitHub Actions (cron)**: `bot_parrilla.py` diario a las 8am (Colombia), enviando texto + imagen, $0. Reemplaza el cron de Render.
 - **Uso local**: `bot_local.py` bajo demanda para interactuar.
 
 Este documento enumera opciones para tener el bot interactivo 24/7 sin pagar (o muy poco).
@@ -23,12 +23,13 @@ El workflow `.github/workflows/parrilla.yml` corre `bot_parrilla.py` en un runne
    - `BOT_TOKEN`
    - `CHAT_ID`
 3. Ve a **Actions -> Parrilla Futbol -> Telegram -> Run workflow** y prueba con `hoy`.
-4. El cron queda automatico a las `0 13 * * *` UTC (8:00 AM Colombia).
+4. El cron queda automatico a las `0 13 * * *` UTC (8:00 AM Colombia) y envia texto + imagen.
 
 ### Ventajas
 - Gratis (2,000 minutos Linux/mes en repos privados; una corrida usa ~1-2 min).
 - Sin cold starts, sin servidor, con logs de cada ejecucion.
-- Permite elegir `hoy`, `manana`, `semana` o `todo`, la fuente y el formato (`mensaje`, `imagen` o `ambos`) desde la ejecucion manual.
+- El cron diario envia texto + imagen; las ejecuciones manuales permiten elegir `mensaje`, `imagen` o `ambos`.
+- Permite elegir `hoy`, `manana`, `semana` o `todo` y la fuente desde la ejecucion manual.
 
 ### Desventajas
 - No mantiene el bot interactivo (`bot_local.py`) encendido 24/7.
@@ -117,7 +118,7 @@ Render ofrece Background Workers desde $7/mes. Ahi corre `bot_local.py` 24/7.
 Usas Render solo para el cron diario (o lo quitas y usas GitHub Actions). Cuando queres interactuar:
 - Ejecutas `python bot_local.py` en tu PC un rato
 - Lo cerras cuando terminaste
-- El cron sigue mandando el mensaje de las 8am todos los dias
+- El cron sigue mandando el texto + imagen de las 8am todos los dias
 
 ### Ventajas
 - Ya conoces la infraestructura

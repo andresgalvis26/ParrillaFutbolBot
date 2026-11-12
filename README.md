@@ -5,7 +5,7 @@ Bot de Telegram para consultar y enviar parrillas de partidos de futbol.
 Dos modos de ejecucion:
 
 - `src/bot_local.py`: bot interactivo de Telegram por `polling`
-- `src/bot_parrilla.py`: script de ejecucion puntual para enviar mensajes a un `CHAT_ID`
+- `src/bot_parrilla.py`: script de ejecucion puntual para enviar mensajes o imagenes a un `CHAT_ID`
 
 Ambos scripts comparten la misma logica de scraping y seleccion de fuente de datos.
 
@@ -148,7 +148,7 @@ Fuentes disponibles: `futbolred`, `partidos-de-hoy`, `futbolenvivo`.
 
 ### Formato De Envio
 
-Por defecto se envia el mensaje de texto de siempre. Tambien puedes generar una imagen PNG con la parrilla:
+En local, por defecto se envia el mensaje de texto de siempre. Tambien puedes generar una imagen PNG con la parrilla:
 
 ```bash
 python bot_parrilla.py hoy --format imagen
@@ -156,11 +156,11 @@ python bot_parrilla.py hoy --format ambos
 python bot_parrilla.py manana --source futbolenvivo --format imagen
 ```
 
-- `mensaje`: texto (default, es lo que usa el cron programado).
+- `mensaje`: solo texto.
 - `imagen`: una o varias imagenes PNG con los partidos, paginadas cada 8.
-- `ambos`: manda primero el texto y luego las imagenes.
+- `ambos`: manda primero el texto y luego las imagenes. Es el default del workflow de GitHub Actions y del cron diario.
 
-Las imagenes se generan con Pillow, sin navegador. En GitHub Actions se elige con el input `formato` al hacer **Run workflow**; el cron diario sigue usando `mensaje`.
+Las imagenes se generan con Pillow, sin navegador. En GitHub Actions se elige con el input `formato` al hacer **Run workflow**; el cron diario usa `ambos` (texto + imagen).
 
 Para `semana`, el formato imagen manda una o varias imagenes por cada dia con partidos, asi que puede enviar bastante contenido. Para el uso normal, `hoy` o `manana` es suficiente.
 
@@ -175,7 +175,7 @@ Para `semana`, el formato imagen manda una o varias imagenes por cada dia con pa
 - `FutbolEnVivoColombiaScrapper`: usa `requests`, ~15-30 partidos/dia, ~15 dias visibles
 - `get_scraper()`: factory que retorna el scraper segun la fuente configurada
 - `image_generator.py`: genera la imagen PNG con Pillow (sin navegador) y pagina cada 8 partidos
-- `--format mensaje|imagen|ambos`: elige que enviar; el default es `mensaje`
+- `--format mensaje|imagen|ambos`: elige que enviar; el default del CLI es `mensaje` y el del workflow es `ambos`
 - Pensado para cron jobs o ejecuciones programadas
 - Escribe logs en consola y en `logs/bot_parrilla.log`
 
@@ -211,7 +211,7 @@ Las dependencias transitivas (httpx, rich, cffi, soupsieve, etc.) se instalan au
 
 ### GitHub Actions (recomendado, $0)
 
-El workflow `.github/workflows/parrilla.yml` ejecuta el bot todos los dias a las **8:00 AM Colombia (13:00 UTC)** y tambien se puede lanzar a mano desde **Actions -> Parrilla Futbol -> Telegram -> Run workflow**.
+El workflow `.github/workflows/parrilla.yml` ejecuta el bot todos los dias a las **8:00 AM Colombia (13:00 UTC)** y envia **texto + imagen**. Tambien se puede lanzar a mano desde **Actions -> Parrilla Futbol -> Telegram -> Run workflow**.
 
 Configura estos secretos en el repositorio (**Settings -> Secrets and variables -> Actions**):
 
@@ -222,10 +222,10 @@ El workflow instala `src/config/requirements.txt` y ejecuta:
 
 ```bash
 cd src
-python bot_parrilla.py hoy --source futbolred
+python bot_parrilla.py hoy --source futbolred --format ambos
 ```
 
-Desde la ejecucion manual puedes elegir `hoy`, `manana`, `semana` o `todo`, la fuente (`futbolred`, `partidos-de-hoy` o `futbolenvivo`) y el formato (`mensaje`, `imagen` o `ambos`). El cron programado siempre usa `mensaje` y `futbolred`. Para cambiar la hora del cron, edita la linea `cron` del workflow (GitHub usa UTC; Colombia es UTC-5).
+Desde la ejecucion manual puedes elegir `hoy`, `manana`, `semana` o `todo`, la fuente (`futbolred`, `partidos-de-hoy` o `futbolenvivo`) y el formato (`mensaje`, `imagen` o `ambos`). El cron programado usa `hoy`, `futbolred` y `ambos`. Para cambiar la hora del cron, edita la linea `cron` del workflow (GitHub usa UTC; Colombia es UTC-5).
 
 Costo: GitHub Free incluye 2,000 minutos Linux al mes en repos privados. Una corrida diaria consume aproximadamente 1-2 minutos.
 

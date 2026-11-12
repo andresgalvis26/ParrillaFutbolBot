@@ -2,6 +2,7 @@ name: Parrilla Futbol -> Telegram
 
 on:
   # 8:00 AM Colombia (UTC-5). GitHub usa UTC.
+  # El cron no trae inputs: el paso final cae en hoy / futbolred / ambos.
   schedule:
     - cron: "0 13 * * *"
 
@@ -30,7 +31,7 @@ on:
       formato:
         description: "Formato de envio"
         required: true
-        default: "mensaje"
+        default: "ambos"
         type: choice
         options:
           - mensaje
@@ -81,4 +82,6 @@ jobs:
           PYTHONIOENCODING: utf-8
           PYTHONUNBUFFERED: "1"
         run: |
-          python bot_parrilla.py "${{ inputs.tipo || 'hoy' }}" --source "${{ inputs.source || 'futbolred' }}" --format "${{ inputs.formato || 'mensaje' }}"
+          # En workflow_dispatch se usan los inputs. En el cron no existen,
+          # asi que el fallback deja el envio diario en texto + imagen.
+          python bot_parrilla.py "${{ inputs.tipo || 'hoy' }}" --source "${{ inputs.source || 'futbolred' }}" --format "${{ inputs.formato || 'ambos' }}"
