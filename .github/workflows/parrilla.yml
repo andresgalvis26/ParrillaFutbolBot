@@ -47,7 +47,9 @@ concurrency:
 
 jobs:
   enviar:
-    runs-on: ubuntu-latest
+    # Fijado a 24.04 para evitar la migracion automatica a Ubuntu 26
+    # mientras validamos el runner nuevo.
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     defaults:
@@ -58,10 +60,10 @@ jobs:
 
     steps:
       - name: Descargar repositorio
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Configurar Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
