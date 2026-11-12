@@ -7,3 +7,4 @@ beautifulsoup4==4.15.0
 python-telegram-bot==22.8
 python-dotenv==1.2.2
 curl_cffi==0.15.0
+Pillow==13.0.0

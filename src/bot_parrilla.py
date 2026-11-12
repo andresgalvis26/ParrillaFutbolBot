@@ -1,24 +1,26 @@
 """
 Módulo principal del bot de partidos de fútbol.
 
-Extrae partidos desde dos fuentes posibles:
+Extrae partidos desde tres fuentes posibles:
     - 'futbolred':       FutbolRed.com (usa curl_cffi para bypass de Akamai CDN)
     - 'partidos-de-hoy': Partidos-de-hoy.co (más estable, usando requests)
+    - 'futbolenvivo':    FutbolEnVivoColombia.com (más partidos por día)
 
 La fuente se selecciona por este orden de precedencia:
-    1. Parámetro CLI:  --source futbolred|partidos-de-hoy
+    1. Parámetro CLI:  --source futbolred|partidos-de-hoy|futbolenvivo
     2. Variable de entorno:  SCRAPER_SOURCE (config/.env)
-    3. Default:  'partidos-de-hoy' (lo que está en producción)
+    3. Default:  'partidos-de-hoy'
 
 Uso CLI:
-    python bot_parrilla.py test [hoy|manana|semana] [--source futbolred|partidos-de-hoy]
+    python bot_parrilla.py test [hoy|manana|semana] [--source fuente]
     python bot_parrilla.py hoy|manana|semana|todo [--source fuente]
+        [--format mensaje|imagen|ambos]
 """
 
 import re
 import requests
 from bs4 import BeautifulSoup
-from telegram import Bot
+from telegram import Bot, InputFile
 import asyncio
 from datetime import datetime, timedelta, timezone
 import os
@@ -1057,6 +1059,115 @@ async def enviar_mensaje(tipo: str = "hoy", chat_id: str = None, source: str = N
         return False
 
 
+def obtener_datos_para_imagen(
+    tipo: str = "hoy", source: str = None
+) -> Tuple[List[Tuple[str, str, List[Partido]]], str]:
+    """Devuelve [(titulo, fecha, partidos)] y el nombre de la fuente.
+
+    Se usa solo para el formato imagen. El texto sigue usando obtener_partidos()
+    para no tocar el mensaje que ya funciona.
+    """
+    scraper, nombre_fuente = get_scraper(source)
+
+    if tipo == "hoy":
+        return [
+            ("Partidos de hoy", DateUtils.get_hoy(), scraper.obtener_partidos_hoy())
+        ], nombre_fuente
+
+    if tipo == "manana":
+        return [
+            (
+                "Partidos de mañana",
+                DateUtils.get_manana(),
+                scraper.obtener_partidos_manana(),
+            )
+        ], nombre_fuente
+
+    if tipo == "todo":
+        return [
+            ("Partidos de hoy", DateUtils.get_hoy(), scraper.obtener_partidos_hoy()),
+            (
+                "Partidos de mañana",
+                DateUtils.get_manana(),
+                scraper.obtener_partidos_manana(),
+            ),
+        ], nombre_fuente
+
+    if tipo == "semana":
+        dias: List[Tuple[str, str, List[Partido]]] = []
+        for i in range(7):
+            fecha_obj = datetime.now(COL_TZ) + timedelta(days=i)
+            fecha_str = DateUtils.get_fecha_es(fecha_obj)
+            partidos = scraper.obtener_partidos_fecha(fecha_str)
+            if partidos:
+                dias.append(("Partidos del día", fecha_str, partidos))
+
+        if not dias:
+            dias.append(("Partidos de la semana", DateUtils.get_hoy(), []))
+
+        return dias, nombre_fuente
+
+    raise ValueError(f"Tipo de consulta no válido para imagen: {tipo}")
+
+
+async def enviar_imagen(tipo: str = "hoy", chat_id: str = None, source: str = None):
+    """Genera y envía una o varias imágenes con la parrilla de partidos."""
+    if not BOT_TOKEN:
+        logger.error("BOT_TOKEN no está configurado")
+        return False
+
+    if not chat_id:
+        chat_id = CHAT_ID
+
+    if not chat_id:
+        logger.error("CHAT_ID no está configurado")
+        return False
+
+    try:
+        # Import perezoso: el modo mensaje sigue funcionando aunque Pillow
+        # no esté instalado en un entorno local viejo.
+        from image_generator import generar_imagenes_partidos
+
+        logger.info(f"Generando imagen(es) de partidos ({tipo})...")
+        dias, nombre_fuente = obtener_datos_para_imagen(tipo, source=source)
+
+        bot = Bot(token=BOT_TOKEN)
+        enviadas = 0
+
+        for titulo, fecha, partidos in dias:
+            imagenes = generar_imagenes_partidos(
+                partidos, titulo, fecha, nombre_fuente
+            )
+            logger.info(
+                "Enviando %s imagen(es) para %s (%s partidos)",
+                len(imagenes),
+                fecha,
+                len(partidos),
+            )
+
+            for index, png in enumerate(imagenes, start=1):
+                caption = f"{titulo} · {fecha}"
+                if len(imagenes) > 1:
+                    caption += f" · {index}/{len(imagenes)}"
+
+                await bot.send_photo(
+                    chat_id=chat_id,
+                    photo=InputFile(
+                        png, filename=f"partidos-{enviadas + 1}.png"
+                    ),
+                    caption=caption,
+                )
+                enviadas += 1
+                await asyncio.sleep(1)
+
+        logger.info(f"{enviadas} imagen(es) enviadas exitosamente")
+        return True
+
+    except Exception as e:
+        logger.error(f"Error enviando imagen: {_sanitize(e)}")
+        return False
+
+
 async def enviar_multiple(tipos: List[str] = None, source: str = None) -> bool:
     """Envía múltiples tipos de partidos.
 
@@ -1107,11 +1218,13 @@ def parse_cli_args():
     Soporta:
       python bot_parrilla.py test [tipo] [--source fuente]
       python bot_parrilla.py hoy|manana|semana|todo [--source fuente]
+          [--format mensaje|imagen|ambos]
 
-    El argumento --source puede aparecer en cualquier posición.
+    Los argumentos --source y --format pueden aparecer en cualquier posición.
     """
     args = sys.argv[1:]  # Omitir el nombre del script
     source = None
+    formato = "mensaje"
 
     # Extraer --source si existe (puede estar en cualquier posición)
     if "--source" in args:
@@ -1122,25 +1235,51 @@ def parse_cli_args():
             args.pop(idx + 1)
             args.pop(idx)
 
+    # Extraer --format/--formato si existe
+    for flag in ("--format", "--formato", "-f"):
+        if flag in args:
+            idx = args.index(flag)
+            if idx + 1 < len(args):
+                formato = args[idx + 1].lower()
+                args.pop(idx + 1)
+                args.pop(idx)
+            break
+
     comando = args[0].lower() if args else None
     tipo = args[1].lower() if len(args) > 1 else "hoy"
 
-    return comando, tipo, source
+    return comando, tipo, source, formato
 
 
 # === PUNTO DE ENTRADA PRINCIPAL ===
 if __name__ == "__main__":
-    comando, tipo_test, source_cli = parse_cli_args()
+    comando, tipo_test, source_cli, formato_cli = parse_cli_args()
+
+    formatos_validos = ("mensaje", "imagen", "ambos")
+    if formato_cli not in formatos_validos:
+        print(f"❌ Formato no válido: '{formato_cli}'. Usa: mensaje, imagen o ambos.")
+        sys.exit(2)
 
     if comando == "test":
         # Modo prueba - mostrar en consola
         mostrar_partidos_consola(tipo_test, source=source_cli)
 
     elif comando in ("hoy", "manana", "semana", "todo"):
-        if comando == "todo":
-            ok = asyncio.run(enviar_multiple(["hoy", "manana"], source=source_cli))
-        else:
-            ok = asyncio.run(enviar_mensaje(comando, source=source_cli))
+        ok = True
+
+        if formato_cli in ("mensaje", "ambos"):
+            if comando == "todo":
+                ok = (
+                    asyncio.run(
+                        enviar_multiple(["hoy", "manana"], source=source_cli)
+                    )
+                    and ok
+                )
+            else:
+                ok = asyncio.run(enviar_mensaje(comando, source=source_cli)) and ok
+
+        if formato_cli in ("imagen", "ambos"):
+            ok = asyncio.run(enviar_imagen(comando, source=source_cli)) and ok
 
         # Código de salida distinto de cero para que GitHub Actions
         # marque la ejecución como fallida si Telegram no recibió el mensaje.
@@ -1149,15 +1288,27 @@ if __name__ == "__main__":
     elif comando is None:
         # Comportamiento por defecto - enviar partidos de hoy
         logger.info("Ejecutando modo por defecto: partidos de hoy")
-        ok = asyncio.run(enviar_mensaje("hoy"))
+        ok = True
+
+        if formato_cli in ("mensaje", "ambos"):
+            ok = asyncio.run(enviar_mensaje("hoy")) and ok
+
+        if formato_cli in ("imagen", "ambos"):
+            ok = asyncio.run(enviar_imagen("hoy")) and ok
+
         sys.exit(0 if ok else 1)
 
     else:
         print("❌ Comando no reconocido")
         print("Comandos disponibles:")
-        print("  python bot_parrilla.py hoy [--source futbolred|partidos-de-hoy]")
-        print("  python bot_parrilla.py manana [--source ...]")
-        print("  python bot_parrilla.py semana [--source ...]")
-        print("  python bot_parrilla.py todo [--source ...]")
-        print("  python bot_parrilla.py test [hoy|manana|semana] [--source ...]")
+        print(
+            "  python bot_parrilla.py hoy [--source ...] "
+            "[--format mensaje|imagen|ambos]"
+        )
+        print("  python bot_parrilla.py manana [--source ...] [--format ...]")
+        print("  python bot_parrilla.py semana [--source ...] [--format ...]")
+        print("  python bot_parrilla.py todo [--source ...] [--format ...]")
+        print(
+            "  python bot_parrilla.py test [hoy|manana|semana] [--source ...]"
+        )
         sys.exit(2)

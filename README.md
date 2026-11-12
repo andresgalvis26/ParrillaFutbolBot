@@ -38,6 +38,7 @@ ParrillaFutbolBot/
 |-- src/
 |   |-- bot_local.py              # Bot interactivo por polling
 |   |-- bot_parrilla.py           # Script de envio puntual
+|   |-- image_generator.py        # Genera la imagen PNG de la parrilla
 |   |-- config/
 |   |   |-- .env                  # Variables de entorno (no versionado)
 |   |   |-- .env.example          # Ejemplo de configuracion
@@ -145,6 +146,24 @@ python bot_parrilla.py semana --source futbolenvivo
 El `--source` se puede usar con cualquier comando (`hoy`, `manana`, `semana`, `todo`, `test`).
 Fuentes disponibles: `futbolred`, `partidos-de-hoy`, `futbolenvivo`.
 
+### Formato De Envio
+
+Por defecto se envia el mensaje de texto de siempre. Tambien puedes generar una imagen PNG con la parrilla:
+
+```bash
+python bot_parrilla.py hoy --format imagen
+python bot_parrilla.py hoy --format ambos
+python bot_parrilla.py manana --source futbolenvivo --format imagen
+```
+
+- `mensaje`: texto (default, es lo que usa el cron programado).
+- `imagen`: una o varias imagenes PNG con los partidos, paginadas cada 8.
+- `ambos`: manda primero el texto y luego las imagenes.
+
+Las imagenes se generan con Pillow, sin navegador. En GitHub Actions se elige con el input `formato` al hacer **Run workflow**; el cron diario sigue usando `mensaje`.
+
+Para `semana`, el formato imagen manda una o varias imagenes por cada dia con partidos, asi que puede enviar bastante contenido. Para el uso normal, `hoy` o `manana` es suficiente.
+
 ## Como Funciona Cada Script
 
 ### `src/bot_parrilla.py`
@@ -155,6 +174,8 @@ Fuentes disponibles: `futbolred`, `partidos-de-hoy`, `futbolenvivo`.
 - `PartidosDeHoyScrapper`: usa `requests` normal (fallback a calendario para fechas futuras)
 - `FutbolEnVivoColombiaScrapper`: usa `requests`, ~15-30 partidos/dia, ~15 dias visibles
 - `get_scraper()`: factory que retorna el scraper segun la fuente configurada
+- `image_generator.py`: genera la imagen PNG con Pillow (sin navegador) y pagina cada 8 partidos
+- `--format mensaje|imagen|ambos`: elige que enviar; el default es `mensaje`
 - Pensado para cron jobs o ejecuciones programadas
 - Escribe logs en consola y en `logs/bot_parrilla.log`
 
@@ -169,7 +190,7 @@ Fuentes disponibles: `futbolred`, `partidos-de-hoy`, `futbolenvivo`.
 
 ## Dependencias
 
-`src/config/requirements.txt` contiene solo las 5 dependencias directas:
+`src/config/requirements.txt` contiene solo las 6 dependencias directas:
 
 ```text
 requests
@@ -177,6 +198,7 @@ beautifulsoup4
 python-telegram-bot
 python-dotenv
 curl_cffi
+Pillow
 ```
 
 Las dependencias transitivas (httpx, rich, cffi, soupsieve, etc.) se instalan automaticamente via pip.
@@ -203,7 +225,7 @@ cd src
 python bot_parrilla.py hoy --source futbolred
 ```
 
-Desde la ejecucion manual puedes elegir `hoy`, `manana`, `semana` o `todo`, y la fuente (`futbolred`, `partidos-de-hoy` o `futbolenvivo`). Para cambiar la hora del cron, edita la linea `cron` del workflow (GitHub usa UTC; Colombia es UTC-5).
+Desde la ejecucion manual puedes elegir `hoy`, `manana`, `semana` o `todo`, la fuente (`futbolred`, `partidos-de-hoy` o `futbolenvivo`) y el formato (`mensaje`, `imagen` o `ambos`). El cron programado siempre usa `mensaje` y `futbolred`. Para cambiar la hora del cron, edita la linea `cron` del workflow (GitHub usa UTC; Colombia es UTC-5).
 
 Costo: GitHub Free incluye 2,000 minutos Linux al mes en repos privados. Una corrida diaria consume aproximadamente 1-2 minutos.
 

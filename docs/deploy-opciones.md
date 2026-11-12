@@ -28,7 +28,7 @@ El workflow `.github/workflows/parrilla.yml` corre `bot_parrilla.py` en un runne
 ### Ventajas
 - Gratis (2,000 minutos Linux/mes en repos privados; una corrida usa ~1-2 min).
 - Sin cold starts, sin servidor, con logs de cada ejecucion.
-- Permite elegir `hoy`, `manana`, `semana` o `todo` y la fuente desde la ejecucion manual.
+- Permite elegir `hoy`, `manana`, `semana` o `todo`, la fuente y el formato (`mensaje`, `imagen` o `ambos`) desde la ejecucion manual.
 
 ### Desventajas
 - No mantiene el bot interactivo (`bot_local.py`) encendido 24/7.

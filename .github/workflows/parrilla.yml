@@ -27,6 +27,15 @@ on:
           - futbolred
           - partidos-de-hoy
           - futbolenvivo
+      formato:
+        description: "Formato de envio"
+        required: true
+        default: "mensaje"
+        type: choice
+        options:
+          - mensaje
+          - imagen
+          - ambos
 
 permissions:
   contents: read
@@ -70,4 +79,4 @@ jobs:
           PYTHONIOENCODING: utf-8
           PYTHONUNBUFFERED: "1"
         run: |
-          python bot_parrilla.py "${{ inputs.tipo || 'hoy' }}" --source "${{ inputs.source || 'futbolred' }}"
+          python bot_parrilla.py "${{ inputs.tipo || 'hoy' }}" --source "${{ inputs.source || 'futbolred' }}" --format "${{ inputs.formato || 'mensaje' }}"
